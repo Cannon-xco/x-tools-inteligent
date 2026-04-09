@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "description": "Configurable lead scoring rules. Higher score = higher sales opportunity.",
+  "rules": [
+    {
+      "id": "no_website",
+      "field": "has_website",
+      "operator": "eq",
+      "value": false,
+      "score": 30,
+      "reason": "No website detected — major digital presence gap"
+    },
+    {
+      "id": "no_ssl",
+      "field": "has_ssl",
+      "operator": "eq",
+      "value": false,
+      "score": 25,
+      "reason": "No SSL certificate — security risk & SEO penalty"
+    },
+    {
+      "id": "low_rating",
+      "field": "rating",
+      "operator": "lt",
+      "value": 4.0,
+      "score": 20,
+      "reason": "Low Google rating (< 4.0) — reputation management opportunity"
+    },
+    {
+      "id": "no_booking",
+      "field": "has_booking",
+      "operator": "eq",
+      "value": false,
+      "score": 20,
+      "reason": "No booking/appointment system detected — missing key conversion tool"
+    },
+    {
+      "id": "low_reviews",
+      "field": "review_count",
+      "operator": "lt",
+      "value": 20,
+      "score": 15,
+      "reason": "Low review count (< 20) — needs reputation building strategy"
+    },
+    {
+      "id": "no_social",
+      "field": "has_social",
+      "operator": "eq",
+      "value": false,
+      "score": 10,
+      "reason": "No social media presence — missing brand awareness channel"
+    },
+    {
+      "id": "no_contact_form",
+      "field": "has_contact_form",
+      "operator": "eq",
+      "value": false,
+      "score": 10,
+      "reason": "No contact form detected — reducing online lead capture"
+    }
+  ]
+}

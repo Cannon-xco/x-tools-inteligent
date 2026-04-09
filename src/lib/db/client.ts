@@ -15,9 +15,9 @@ export function getPool(): Pool {
     _pool = new Pool({
       connectionString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      max: 10, // Slightly reduced to avoid overwhelming DB on serverless-like environments
+      idleTimeoutMillis: 60000,
+      connectionTimeoutMillis: 10000, // Increased to 10s for stability
     });
 
     // Initialize schema on first pool creation (only if on Railway/Backend)

@@ -1,38 +1,42 @@
-# Production Dockerfile for Railway (Backend/Scraper)
-# Includes Playwright dependencies for Google Maps scraping
-
-FROM mcr.microsoft.com/playwright:v1.48.0-focal
-
-# Set working directory
+# Stage 1: Dependencies
+FROM node:20-slim AS deps
 WORKDIR /app
-
-# Install Node.js v20 (Playwright image uses an older version usually)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs
-
-# Copy package files
 COPY package.json package-lock.json* ./
+RUN npm ci
 
-# Set environment variables for build
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-
-# Install dependencies
-RUN npm install
-
-# Install Playwright browsers to the global path defined above
-RUN npx playwright install chromium --with-deps
-
-# Copy source code
+# Stage 2: Builder
+FROM node:20-slim AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-# Build the Next.js application
+ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 
-ENV NODE_ENV=production
+# Stage 3: Runner
+# We use the playwright image as base to get all system dependencies for scraping
+FROM mcr.microsoft.com/playwright:v1.48.0-focal AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Install Node.js v20 in the playwright image (which might have an older version)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs
+
+# Copy essential standalone files from builder
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Install Playwright browsers globally
+RUN npx playwright install chromium --with-deps
 
 # Expose port
 EXPOSE 3000
 
-# Force Next.js to bind to 0.0.0.0 and use the dynamic PORT provided by Railway
-CMD ["sh", "-c", "npx next start -p ${PORT:-3000} -H 0.0.0.0"]
+# Set dynamic port
+ENV PORT 3000
+
+# Run the standalone server
+CMD ["node", "server.js"]

@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   // We no longer need better-sqlite3
   serverExternalPackages: ['playwright', 'playwright-core', 'pg'],
   experimental: {

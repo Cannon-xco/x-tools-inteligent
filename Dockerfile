@@ -13,27 +13,29 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 
 # Stage 3: Runner
-# We use the playwright image as base to get all system dependencies for scraping
 FROM mcr.microsoft.com/playwright:v1.48.0-focal AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install Node.js v20 in the playwright image (which might have an older version)
+# Install Node.js v20
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs
 
-# Copy essential standalone files from builder
-COPY --from=builder /app/public ./public
+# Copy standalone build
+COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 
-# Expose port
+# IMPORTANT: Standalone mode doesn't include the 'playwright' binaries in the final image 
+# because it only includes what's needed for the node server.
+# We must ensure the browsers are present in the focal image's standard path.
+RUN npx playwright install chromium --with-deps
+
 EXPOSE 3000
 
-# Set dynamic port
-ENV PORT 3000
-
-# Run the standalone server
 CMD ["node", "server.js"]

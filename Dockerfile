@@ -34,5 +34,5 @@ ENV NODE_ENV=production
 # Expose port
 EXPOSE 3000
 
-# Force Next.js to bind to 0.0.0.0 and use port 3000
-CMD ["npx", "next", "start", "-p", "3000", "-H", "0.0.0.0"]
+# Force Next.js to bind to 0.0.0.0 and use the dynamic PORT provided by Railway
+CMD ["sh", "-c", "npx next start -p ${PORT:-3000} -H 0.0.0.0"]

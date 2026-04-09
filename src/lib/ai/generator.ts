@@ -8,7 +8,6 @@ import type { OutreachDraft, OutreachRequest } from '@/types';
 import { insertLog } from '@/lib/db/client';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? 'z-ai/glm-5.1'; // Using Elite Reasoning Model from your example
 const MAX_TOKENS = 1200; // Increased for reasoning overhead
 

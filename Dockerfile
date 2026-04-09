@@ -13,15 +13,17 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies
-RUN npm install
-
-# Copy source code
-COPY . .
-
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Install dependencies
+RUN npm install
+RUN npx playwright install chromium --with-deps
+
+# Copy source code
+COPY . .
 
 # Build the Next.js application
 RUN npm run build

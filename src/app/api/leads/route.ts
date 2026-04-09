@@ -43,7 +43,8 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await insertLog('error', `Failed to list leads: ${msg}`);
+    console.error('❌ GET /api/leads error:', msg);
+    await insertLog('error', `Failed to list leads: ${msg}`).catch(() => {});
     return NextResponse.json<ApiResponse>({ success: false, error: msg }, { status: 500 });
   }
 }

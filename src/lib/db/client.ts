@@ -12,18 +12,26 @@ export function getPool(): Pool {
   if (!_pool) {
     const connectionString = process.env.DATABASE_URL;
     
+    if (!connectionString) {
+      console.error('❌ DATABASE_URL is not defined! DB operations will fail.');
+    }
+
     _pool = new Pool({
       connectionString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 10, // Slightly reduced to avoid overwhelming DB on serverless-like environments
+      max: 10,
       idleTimeoutMillis: 60000,
-      connectionTimeoutMillis: 10000, // Increased to 10s for stability
+      connectionTimeoutMillis: 10000,
+    });
+
+    _pool.on('error', (err) => {
+      console.error('💥 PostgreSQL Pool Error:', err.message);
     });
 
     // Initialize schema on first pool creation (only if on Railway/Backend)
-    if (process.env.APP_MODE !== 'frontend') {
+    if (process.env.APP_MODE !== 'frontend' && connectionString) {
       initSchema(_pool).catch(err => {
-        console.error('Failed to initialize PostgreSQL schema:', err);
+        console.error('❌ Failed to initialize PostgreSQL schema:', err.message);
       });
     }
   }

@@ -19,6 +19,8 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Install dependencies
 RUN npm install
+
+# Install Playwright browsers to the global path defined above
 RUN npx playwright install chromium --with-deps
 
 # Copy source code
@@ -32,6 +34,5 @@ ENV NODE_ENV=production
 # Expose port
 EXPOSE 3000
 
-# Start the application
-# We use npm start which runs 'next start'
-CMD ["npm", "start"]
+# Force Next.js to bind to 0.0.0.0 and use port 3000
+CMD ["npx", "next", "start", "-p", "3000", "-H", "0.0.0.0"]

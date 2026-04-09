@@ -1,7 +1,7 @@
 # Production Dockerfile for Railway (Backend/Scraper)
 # Includes Playwright dependencies for Google Maps scraping
 
-FROM mcr.microsoft.com/playwright:v1.49.1-focal
+FROM mcr.microsoft.com/playwright:v1.49.0-focal
 
 # Set working directory
 WORKDIR /app

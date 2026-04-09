@@ -28,8 +28,8 @@ export function getPool(): Pool {
       console.error('💥 PostgreSQL Pool Error:', err.message);
     });
 
-    // Initialize schema on first pool creation (only if on Railway/Backend)
-    if (process.env.APP_MODE !== 'frontend' && connectionString) {
+    // Initialize schema on first pool creation
+    if (connectionString) {
       initSchema(_pool).catch(err => {
         console.error('❌ Failed to initialize PostgreSQL schema:', err.message);
       });

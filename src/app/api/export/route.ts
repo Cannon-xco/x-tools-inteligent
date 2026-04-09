@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '10000'), 10000);
 
-    const rows = getLeads(limit, 0);
+    const rows = await getLeads(limit, 0);
 
       const headers = [
       'ID', 'Name', 'Address', 'Phone', 'Maps URL', 'Website',
@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     const csv = csvLines.join('\r\n');
     const filename = `leads-export-${new Date().toISOString().slice(0, 10)}.csv`;
 
-    insertLog('info', `CSV export: ${rows.length} leads`);
+    await insertLog('info', `CSV export: ${rows.length} leads`);
 
     return new NextResponse(csv, {
       headers: {
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    insertLog('error', `CSV export failed: ${msg}`);
+    await insertLog('error', `CSV export failed: ${msg}`);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

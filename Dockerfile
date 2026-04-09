@@ -29,9 +29,6 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Install Playwright browsers globally
-RUN npx playwright install chromium --with-deps
-
 # Expose port
 EXPOSE 3000
 

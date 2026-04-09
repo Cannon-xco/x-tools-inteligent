@@ -8,8 +8,9 @@ import type { OutreachDraft, OutreachRequest } from '@/types';
 import { insertLog } from '@/lib/db/client';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? 'meta-llama/llama-3.1-8b-instruct:free';
-const MAX_TOKENS = 300;
+const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? 'z-ai/glm-5.1'; // Using Elite Reasoning Model from your example
+const MAX_TOKENS = 1200; // Increased for reasoning overhead
 
 function log(level: 'info' | 'warn' | 'error', msg: string, data?: unknown) {
   insertLog(level, `[ai] ${msg}`, data);
@@ -69,6 +70,7 @@ async function callOpenRouter(prompt: string): Promise<{ subject: string; body: 
       messages: [{ role: 'user', content: prompt }],
       max_tokens: MAX_TOKENS,
       temperature: 0.7,
+      reasoning: { enabled: true }
     }),
     signal: AbortSignal.timeout(20_000),
   });

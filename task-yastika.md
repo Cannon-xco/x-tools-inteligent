@@ -29,41 +29,32 @@ Setelah install, pastikan `package.json` sudah ada entry:
 
 ## ✅ TASK 2 — Setup `.env.local`
 
-Buat file `.env.local` di root project jika belum ada. Tambahkan:
+File `env.example` di root project sudah berisi **semua variable yang dibutuhkan** (sudah lengkap, tidak perlu diedit).
 
-```env
-# Email Sending — Resend
-RESEND_API_KEY=re_xxxxxxxxx         # Minta API key dari Widi, jangan hardcode di sini
-RESEND_FROM_EMAIL=onboarding@resend.dev
-RESEND_FROM_NAME=XTools Outreach
-```
+**Langkah:**
 
-> ⚠️ **Jangan pernah commit file `.env.local` ke git!** File ini sudah ada di `.gitignore`.
+1. Copy file `env.example` → buat file baru bernama `.env.local`:
+   ```bash
+   copy env.example .env.local
+   ```
 
----
+2. Buka `.env.local` dan isi nilai yang nyata:
 
-## ✅ TASK 3 — Update `env.example`
+   | Variable | Isi dengan |
+   |----------|-----------|
+   | `DATABASE_URL` | Minta dari Widi atau pakai local Docker |
+   | `OPENROUTER_API_KEY` | Minta dari Widi |
+   | `OPENROUTER_MODEL` | Biarkan default (`z-ai/glm-4.5-air:free`) |
+   | `RESEND_API_KEY` | Minta dari Widi |
+   | `RESEND_FROM_EMAIL` | `onboarding@resend.dev` (untuk testing) |
+   | `RESEND_FROM_NAME` | `XTools Outreach` |
+   | `ALLOWED_ORIGINS` | `localhost:3000` (untuk local dev) |
 
-Edit file `env.example` di root project. Tambahkan section berikut **setelah** block `MAX_CONCURRENT_ENRICHMENT`:
-
-```env
-# ── Email Sending — Resend (REQUIRED for Send Email feature) ──
-# Sign up at https://resend.com → Settings → API Keys → Create API Key
-# Free tier: 3,000 emails/month, 100/day
-RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx
-
-# Sender email address. For testing, use the Resend built-in:
-# onboarding@resend.dev  (no domain verification needed)
-# For production, use your verified domain: outreach@yourdomain.com
-RESEND_FROM_EMAIL=onboarding@resend.dev
-
-# Display name shown in recipient's inbox
-RESEND_FROM_NAME=XTools Outreach
-```
+> ⚠️ **Jangan pernah commit `.env.local` ke git!** File ini sudah ada di `.gitignore`.
 
 ---
 
-## ✅ TASK 4 — Set Env Vars di Railway
+## ✅ TASK 3 — Set Env Vars di Railway
 
 1. Buka project di [railway.app](https://railway.app)
 2. Pergi ke tab **Variables**
@@ -77,7 +68,7 @@ RESEND_FROM_NAME=XTools Outreach
 
 ---
 
-## ✅ TASK 5 — Test Instalasi
+## ✅ TASK 4 — Test Instalasi
 
 Jalankan perintah berikut untuk memastikan tidak ada TypeScript error:
 
@@ -89,7 +80,7 @@ Output harus: **tidak ada error** (kosong).
 
 ---
 
-## ✅ TASK 6 — Buat Test Script Sederhana
+## ✅ TASK 5 — Buat Test Script Sederhana
 
 Buat file `scripts/test-resend.ts` (jangan di `src/`) untuk memastikan Resend bisa digunakan:
 
@@ -126,8 +117,8 @@ main();
 ## 📋 Checklist Sebelum PR
 
 - [ ] `npm install resend` sudah dijalankan
+- [ ] `env.example` di-copy ke `.env.local` dan sudah diisi nilai nyata
 - [ ] `.env.local` sudah ada `RESEND_API_KEY` (dari Widi)
-- [ ] `env.example` sudah diupdate
 - [ ] Railway env vars sudah diset
 - [ ] `npx tsc --noEmit` → 0 errors
 - [ ] `scripts/test-resend.ts` sudah dibuat
@@ -138,7 +129,7 @@ main();
 
 ```bash
 git checkout -b feat/email-setup
-git add env.example package.json package-lock.json scripts/
+git add package.json package-lock.json scripts/
 git commit -m "feat(email): add resend package and env configuration"
 git push origin feat/email-setup
 ```

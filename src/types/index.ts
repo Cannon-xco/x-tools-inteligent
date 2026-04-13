@@ -29,6 +29,7 @@ export interface BusinessListing {
     sources_used: DeepEnrichSource[];
     enriched_at: string;
   };
+  sent_at?: string;
   created_at?: string;
   updated_at?: string;
 }

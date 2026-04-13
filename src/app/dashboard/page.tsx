@@ -5,6 +5,7 @@ import type { BusinessListing, OutreachDraft, EnrichmentData } from '@/types';
 import type { DeepEnrichResult } from '@/types/deep-enrich';
 import { DeepEnrichButton } from './components/DeepEnrichButton';
 import { DeepEnrichPanel } from './components/DeepEnrichPanel';
+import { SendEmailButton } from './components/SendEmailButton';
 
 interface ScrapedLeadResponse {
   name: string;
@@ -126,7 +127,12 @@ function StatCard({
 
 // ── Outreach Modal ────────────────────────────────────────────
 
-function OutreachModal({ lead, outreach, onClose }: { lead: BusinessListing; outreach: OutreachDraft; onClose: () => void }) {
+function OutreachModal({ lead, outreach, onClose, onSent }: {
+  lead: BusinessListing;
+  outreach: OutreachDraft;
+  onClose: () => void;
+  onSent?: (sentAt: string) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard.writeText(`Subject: ${outreach.subject}\n\n${outreach.body}`);
@@ -176,7 +182,7 @@ function OutreachModal({ lead, outreach, onClose }: { lead: BusinessListing; out
         </div>
 
         {/* Footer */}
-        <div className="px-6 pb-5">
+        <div className="px-6 pb-5 space-y-2">
           <button
             onClick={copy}
             className={`w-full py-2.5 rounded-xl font-medium text-sm transition-all ${
@@ -185,6 +191,23 @@ function OutreachModal({ lead, outreach, onClose }: { lead: BusinessListing; out
           >
             {copied ? '✓ Copied!' : '📋 Copy Subject + Body'}
           </button>
+
+          {lead.id && (
+            <SendEmailButton
+              leadId={lead.id}
+              subject={outreach.subject}
+              body={outreach.body}
+              defaultTo={
+                lead.deepEnrichment?.emails?.[0]?.value ??
+                lead.enrichment?.website?.emails?.value?.[0] ??
+                ''
+              }
+              onSent={(sentAt) => {
+                onSent?.(sentAt);
+                onClose();
+              }}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -680,6 +703,8 @@ export default function DashboardPage() {
   const enriched = leads.filter((l) => l.enrichment?.final_url).length;
   const withOutreach = leads.filter((l) => l.outreach).length;
   const noWebsite = leads.filter((l) => !l.website).length;
+  const withSent = leads.filter((l) => l.sent_at).length;
+  const deepEnriched = leads.filter((l) => l.deepEnrichment).length;
 
   // ── Sort + filter ──────────────────────────────────────────
   const sortedLeads = [...leads]
@@ -834,12 +859,14 @@ export default function DashboardPage() {
 
         {/* ── STATS ── */}
         {leads.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
             <StatCard icon="📋" label="Total Leads" value={leads.length} color="border-white/[0.07]" />
             <StatCard icon="🔥" label="Hot Leads" value={hot} sub="Score ≥ 60" color="border-red-900/30" />
             <StatCard icon="🌡" label="Warm Leads" value={warm} sub="Score 30–59" color="border-amber-900/30" />
             <StatCard icon="🌐" label="Enriched" value={enriched} sub={`${leads.length - enriched - noWebsite} pending`} color="border-cyan-900/30" />
-            <StatCard icon="✉️" label="Outreach" value={withOutreach} sub="drafts ready" color="border-violet-900/30" />
+            <StatCard icon="🔬" label="Deep Enriched" value={deepEnriched} sub="DEE completed" color="border-violet-900/30" />
+            <StatCard icon="✉️" label="Outreach" value={withOutreach} sub="drafts ready" color="border-blue-900/30" />
+            <StatCard icon="📨" label="Sent" value={withSent} sub="emails sent" color="border-emerald-900/30" />
             <StatCard icon="⚠️" label="No Website" value={noWebsite} sub="direct contact" color="border-orange-900/30" />
           </div>
         )}
@@ -1012,6 +1039,26 @@ export default function DashboardPage() {
                                   {e.tech.cms.value}
                                 </span>
                               )}
+
+                              {/* Badge: Deep Enriched */}
+                              {lead.deepEnrichment && (
+                                <span
+                                  className="text-[10px] px-1.5 py-0.5 rounded-md font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20"
+                                  title={`DEE: ${lead.deepEnrichment.emails.length} emails, ${lead.deepEnrichment.phones.length} phones`}
+                                >
+                                  🔬 DEE
+                                </span>
+                              )}
+
+                              {/* Badge: Email Sent */}
+                              {lead.sent_at && (
+                                <span
+                                  className="text-[10px] px-1.5 py-0.5 rounded-md font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                  title={`Email terkirim: ${new Date(lead.sent_at).toLocaleString()}`}
+                                >
+                                  📨 Sent
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <span className="text-gray-800 text-[10px]">
@@ -1146,6 +1193,14 @@ export default function DashboardPage() {
           lead={selectedOutreach.lead}
           outreach={selectedOutreach.outreach}
           onClose={() => setSelectedOutreach(null)}
+          onSent={(sentAt) => {
+            setLeads((prev) =>
+              prev.map((l) =>
+                l.id === selectedOutreach.lead.id ? { ...l, sent_at: sentAt } : l
+              )
+            );
+            setSelectedOutreach(null);
+          }}
         />
       )}
 

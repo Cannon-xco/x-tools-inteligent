@@ -18,6 +18,9 @@ export interface IDeeQueue {
   getStatus(jobId: string): Promise<JobStatus | null>;
   updateJob(jobId: string, update: Partial<DeeJob>): Promise<void>;
   onProcess(handler: (job: DeeJob) => Promise<DeepEnrichResult>): void;
+  waitForJob(jobId: string, timeoutMs?: number): Promise<DeeJob | null>;
+  getStats(): Promise<{ total: number; queued: number; processing: number; completed: number; failed: number }>;
+  cleanup(maxAgeMs?: number): number;
 }
 
 // ── In-Memory Queue Implementation ──────────────────────────
@@ -129,7 +132,7 @@ class InMemoryQueue implements IDeeQueue {
   /**
    * Get queue statistics.
    */
-  getStats(): { total: number; queued: number; processing: number; completed: number; failed: number } {
+  async getStats(): Promise<{ total: number; queued: number; processing: number; completed: number; failed: number }> {
     const jobs = Array.from(this.jobs.values());
     return {
       total: jobs.length,
@@ -204,14 +207,31 @@ class InMemoryQueue implements IDeeQueue {
 
 // ── Singleton Instance ───────────────────────────────────────
 
-let queueInstance: InMemoryQueue | null = null;
+let queueInstance: IDeeQueue | null = null;
 
 /**
- * Get the singleton queue instance.
+ * Create the appropriate queue implementation based on environment.
+ * Uses BullMQ (Redis) when REDIS_URL is set, otherwise InMemoryQueue.
  */
-function getQueue(): InMemoryQueue {
+export function createQueue(): IDeeQueue {
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BullMQQueue } = require('./bullmq-queue') as typeof import('./bullmq-queue');
+    return new BullMQQueue(redisUrl);
+  }
+  return new InMemoryQueue();
+}
+
+/**
+ * Get the singleton queue instance (lazy-initialised).
+ */
+function getQueue(): IDeeQueue {
   if (!queueInstance) {
-    queueInstance = new InMemoryQueue();
+    if (process.env.REDIS_URL) {
+      console.info('[DEE Queue] REDIS_URL detected — using BullMQ (Redis) queue.');
+    }
+    queueInstance = createQueue();
   }
   return queueInstance;
 }
@@ -260,7 +280,7 @@ export function registerProcessor(handler: (job: DeeJob) => Promise<DeepEnrichRe
 /**
  * Get queue statistics.
  */
-export function getQueueStats() {
+export async function getQueueStats() {
   return getQueue().getStats();
 }
 

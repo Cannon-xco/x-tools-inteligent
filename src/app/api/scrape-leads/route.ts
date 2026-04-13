@@ -150,6 +150,7 @@ export async function POST(req: NextRequest) {
         verified_socials: null,
         confidence_scores: null,
         deep_enriched_at: null,
+        sent_at: null,
       });
 
       // ── AUTO DEEP ENRICHMENT ────────────────────────────────

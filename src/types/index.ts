@@ -211,6 +211,7 @@ export interface DbLead {
   verified_socials: string | null; // JSON
   confidence_scores: string | null; // JSON
   deep_enriched_at: string | null;
+  sent_at: string | null;
   created_at: string;
   updated_at: string;
 }

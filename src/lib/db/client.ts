@@ -83,6 +83,7 @@ async function initSchema(pool: Pool): Promise<void> {
       ALTER TABLE leads ADD COLUMN IF NOT EXISTS verified_socials TEXT;
       ALTER TABLE leads ADD COLUMN IF NOT EXISTS confidence_scores TEXT;
       ALTER TABLE leads ADD COLUMN IF NOT EXISTS deep_enriched_at TIMESTAMP;
+      ALTER TABLE leads ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;
 
       CREATE INDEX IF NOT EXISTS idx_leads_hash          ON leads(hash);
       CREATE INDEX IF NOT EXISTS idx_leads_score         ON leads(score DESC);
@@ -192,6 +193,13 @@ export async function updateLeadOutreach(id: number, outreachJson: string): Prom
   await getPool().query(
     'UPDATE leads SET outreach_json = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
     [outreachJson, id]
+  );
+}
+
+export async function updateLeadSentAt(id: number, sentAt: string): Promise<void> {
+  await getPool().query(
+    'UPDATE leads SET sent_at = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+    [sentAt, id]
   );
 }
 

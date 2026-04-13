@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
       enrichment: row.enrichment_json ? JSON.parse(row.enrichment_json) as EnrichmentData : undefined,
       outreach: row.outreach_json ? JSON.parse(row.outreach_json) as OutreachDraft : undefined,
       deepEnrichment: row.deep_enrichment_json ? JSON.parse(row.deep_enrichment_json) : undefined,
+      sent_at: row.sent_at ?? undefined,
       created_at: row.created_at,
       updated_at: row.updated_at,
     }));

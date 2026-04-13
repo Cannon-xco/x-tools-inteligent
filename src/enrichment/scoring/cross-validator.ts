@@ -17,7 +17,67 @@ const BOOST_DOMAIN_MATCH = 0.15;     // Email domain matches business domain
 const BOOST_CROSS_FIELD = 0.2;       // Phone in website AND directory
 const BOOST_NAME_CITY_MATCH = 0.1;   // Name + city match across sources
 
-// ── Normalization Helpers ────────────────────────────────────
+// ── Levenshtein Fuzzy Matching ──────────────────────────────
+
+/**
+ * Calculate the Levenshtein edit distance between two strings.
+ * Used for fuzzy business name matching across sources.
+ *
+ * @param a - First string
+ * @param b - Second string
+ * @returns Number of single-character edits to transform a into b
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Calculate string similarity score in the range [0, 1] using Levenshtein.
+ * 1.0 = identical strings, 0.0 = completely different.
+ *
+ * @param a - First string (case-insensitive)
+ * @param b - Second string (case-insensitive)
+ * @returns Similarity score 0–1
+ */
+export function stringSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const normA = a.toLowerCase().trim();
+  const normB = b.toLowerCase().trim();
+  if (normA === normB) return 1;
+  const maxLen = Math.max(normA.length, normB.length);
+  if (maxLen === 0) return 1;
+  return 1 - levenshteinDistance(normA, normB) / maxLen;
+}
+
+/**
+ * Validate that two business name strings refer to the same entity.
+ * Returns BOOST_NAME_CITY_MATCH if similarity exceeds the threshold.
+ *
+ * @param nameA - Business name from one source
+ * @param nameB - Business name from another source
+ * @returns Boost score (0 or BOOST_NAME_CITY_MATCH)
+ */
+export function validateNameMatch(nameA: string, nameB: string): number {
+  if (!nameA || !nameB) return 0;
+  const similarity = stringSimilarity(nameA, nameB);
+  return similarity >= 0.75 ? BOOST_NAME_CITY_MATCH : 0;
+}
+
+// ── Normalization Helpers ─────────────────────────────────────
 
 /**
  * Normalize a string for fuzzy comparison:
@@ -207,7 +267,7 @@ export function calculateTotalBoost(
   field: string,
   value: string,
   sources: string[],
-  context?: { businessWebsite?: string }
+  context?: { businessWebsite?: string; businessName?: string }
 ): number {
   let totalBoost = 0;
 
@@ -224,6 +284,11 @@ export function calculateTotalBoost(
 
   if (field === 'phone') {
     totalBoost += validatePhoneCrossField(sources);
+  }
+
+  // Name match boost: compare business name in context with found value for 'person' fields
+  if (field === 'person' && context?.businessName && value) {
+    totalBoost += validateNameMatch(context.businessName, value);
   }
 
   return Math.min(Math.round(totalBoost * 100) / 100, 1.0);

@@ -305,7 +305,7 @@ function extractPeople($: cheerio.CheerioAPI): Array<{ name: string; title: stri
   const seen = new Set<string>();
 
   // Find team/about sections
-  const teamSections: cheerio.Cheerio<cheerio.Element>[] = [];
+  const teamSections: ReturnType<typeof $>[] = [];
 
   $('section, div, article').each((_, el) => {
     const text = $(el).text().slice(0, 200);

@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { BusinessListing, OutreachDraft, EnrichmentData } from '@/types';
+import type { DeepEnrichResult } from '@/types/deep-enrich';
+import { DeepEnrichButton } from './components/DeepEnrichButton';
+import { DeepEnrichPanel } from './components/DeepEnrichPanel';
 
 interface ScrapedLeadResponse {
   name: string;
@@ -190,9 +193,10 @@ function OutreachModal({ lead, outreach, onClose }: { lead: BusinessListing; out
 
 // ── Lead Detail Panel ─────────────────────────────────────────
 
-function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelete, enriching, scoring, generating, niche }: {
+function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelete, onDeepEnrichComplete, enriching, scoring, generating, niche }: {
   lead: BusinessListing; onClose: () => void;
   onEnrich: () => void; onScore: () => void; onOutreach: () => void; onDelete: () => void;
+  onDeepEnrichComplete: (result: DeepEnrichResult) => void;
   enriching: boolean; scoring: boolean; generating: boolean; niche: string;
 }) {
   const e = lead.enrichment;
@@ -255,6 +259,12 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
               >
                 {scoring ? <Spinner color="#fbbf24" /> : '📊'} {scoring ? 'Scoring…' : 'Score Lead'}
               </button>
+              <DeepEnrichButton
+                leadId={lead.id!}
+                leadName={lead.name}
+                isEnriched={!!lead.deepEnrichment}
+                onComplete={onDeepEnrichComplete}
+              />
               <button
                 onClick={onOutreach}
                 disabled={generating}
@@ -264,6 +274,12 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
               </button>
             </div>
           </div>
+
+          {/* Deep Enrichment Panel */}
+          <DeepEnrichPanel
+            leadId={lead.id!}
+            data={lead.deepEnrichment || null}
+          />
 
           {/* Lead info */}
           <div className="space-y-3">
@@ -444,6 +460,7 @@ export default function DashboardPage() {
   const [enrichingIds, setEnrichingIds] = useState<Set<number>>(new Set());
   const [scoringIds, setScoringIds] = useState<Set<number>>(new Set());
   const [outreachIds, setOutreachIds] = useState<Set<number>>(new Set());
+  const [deepEnrichingIds, setDeepEnrichingIds] = useState<Set<number>>(new Set());
   const [selectedLead, setSelectedLead] = useState<BusinessListing | null>(null);
   const [selectedOutreach, setSelectedOutreach] = useState<{ lead: BusinessListing; outreach: OutreachDraft } | null>(null);
   const [niche, setNiche] = useState('');
@@ -468,6 +485,38 @@ export default function DashboardPage() {
       if (fresh) setSelectedLead(fresh);
     }
   }, [leads]);
+
+  // Auto-trigger deep enrichment for Cold/Warm leads missing core fields
+  useEffect(() => {
+    if (leads.length === 0) return;
+
+    const candidates = leads.filter((l) =>
+      l.id &&
+      l.score !== undefined &&
+      l.score < 60 &&                                        // Warm (30-59) or Cold (<30)
+      !(l.enrichment?.website?.emails?.value?.length) &&      // Missing email from basic enrichment
+      !(l.deepEnrichment?.emails?.length) &&                 // Not already deep-enriched email
+      !l.deepEnrichment         // Not yet enriched
+    );
+
+    if (candidates.length === 0) return;
+
+    addLog('info', `🤖 Auto-enriching ${candidates.length} Cold/Warm lead(s) missing contact info`);
+
+    candidates.forEach((lead, i) => {
+      setTimeout(() => {
+        if (!lead.id) return;
+        fetch(`/api/leads/${lead.id}/enrich`, { method: 'POST' })
+          .then(() => {
+            addLog('info', `🔄 Auto-enrich started for ${lead.name}`);
+          })
+          .catch(() => {
+            addLog('warn', `⚠️ Auto-enrich failed for ${lead.name}`);
+          });
+      }, i * 3000); // 3s stagger to avoid queue flooding
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads.length]);
 
   async function loadLeads() {
     try {
@@ -1081,6 +1130,9 @@ export default function DashboardPage() {
           onScore={() => handleScore(selectedLead)}
           onOutreach={() => selectedLead.outreach ? setSelectedOutreach({ lead: selectedLead, outreach: selectedLead.outreach }) : handleOutreach(selectedLead)}
           onDelete={() => handleDelete(selectedLead)}
+          onDeepEnrichComplete={(result) => {
+            setLeads((p) => p.map((l) => l.id === selectedLead.id ? { ...l, deepEnrichment: result } : l));
+          }}
           enriching={enrichingIds.has(selectedLead.id!)}
           scoring={scoringIds.has(selectedLead.id!)}
           generating={outreachIds.has(selectedLead.id!)}

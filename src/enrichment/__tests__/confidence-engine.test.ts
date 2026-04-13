@@ -1,66 +1,41 @@
 // ============================================================
 // Tests: Confidence Scoring Engine + Cross-Validator
-// Run: npx tsx src/enrichment/__tests__/confidence-engine.test.ts
+// Runner: vitest
 // ============================================================
 
+import { describe, it, expect } from 'vitest';
 import { calculateConfidence, scoreAllFields, calculateOverallConfidence } from '../scoring/confidence-engine';
 import { validateAcrossSources, validateEmailDomain, calculateTotalBoost } from '../scoring/cross-validator';
 
-async function runTests() {
-  let passed = 0;
-  let failed = 0;
+const now = new Date();
 
-  function assert(condition: boolean, testName: string) {
-    if (condition) {
-      console.log(`  ✅ ${testName}`);
-      passed++;
-    } else {
-      console.log(`  ❌ ${testName}`);
-      failed++;
-    }
-  }
-
-  const now = new Date();
-
-  console.log('\n🧪 Confidence Engine Tests\n');
-
-  // ── Test 1: High confidence (official website source) ──
-
-  console.log('Test 1: High confidence from official website');
-  {
+describe('Confidence Engine', () => {
+  it('Test 1: High confidence from official website source', () => {
     const result = calculateConfidence(
       'email',
       'info@example.com',
       [{ name: 'dee_website_adapter:mailto', reliability: 0.95, timestamp: now }],
       0.2
     );
+    expect(result.confidence).toBeGreaterThanOrEqual(0.7);
+    expect(result.status).toBe('VERIFIED');
+    expect(result.field).toBe('email');
+    expect(result.sources).toHaveLength(1);
+  });
 
-    assert(result.confidence >= 0.7, `Confidence >= 0.7 (got ${result.confidence})`);
-    assert(result.status === 'VERIFIED', `Status is VERIFIED (got ${result.status})`);
-    assert(result.field === 'email', 'Field type is email');
-    assert(result.sources.length === 1, 'Has 1 source');
-  }
-
-  // ── Test 2: Low confidence (single raw source) ─────────
-
-  console.log('\nTest 2: Low confidence from raw scrape');
-  {
-    const oldDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // 90 days ago
+  it('Test 2: Low confidence from raw scrape → DISCARDED', () => {
+    const oldDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const result = calculateConfidence(
       'phone',
       '12345',
       [{ name: 'raw_scrape', reliability: 0.4, timestamp: oldDate }],
       0
     );
+    expect(result.confidence).toBeLessThan(0.5);
+    expect(result.status).toBe('DISCARDED');
+  });
 
-    assert(result.confidence < 0.5, `Confidence < 0.5 (got ${result.confidence})`);
-    assert(result.status === 'DISCARDED', `Status is DISCARDED (got ${result.status})`);
-  }
-
-  // ── Test 3: Multi-source boost ─────────────────────────
-
-  console.log('\nTest 3: Multi-source boost');
-  {
+  it('Test 3: Multi-source boost', () => {
     const result = calculateConfidence(
       'email',
       'contact@business.com',
@@ -71,28 +46,18 @@ async function runTests() {
       ],
       0.3
     );
+    expect(result.confidence).toBeGreaterThanOrEqual(0.65);
+    expect(result.sources).toHaveLength(3);
+    expect(['VERIFIED', 'LOW_CONFIDENCE']).toContain(result.status);
+  });
 
-    assert(result.confidence >= 0.65, `Multi-source confidence >= 0.65 (got ${result.confidence})`);
-    assert(result.sources.length === 3, 'Has 3 sources');
-    assert(
-      result.status === 'VERIFIED' || result.status === 'LOW_CONFIDENCE',
-      `Status is VERIFIED or LOW_CONFIDENCE (got ${result.status})`
-    );
-  }
-
-  // ── Test 4: Empty sources → DISCARDED ──────────────────
-
-  console.log('\nTest 4: Empty sources');
-  {
+  it('Test 4: Empty sources → DISCARDED with confidence 0', () => {
     const result = calculateConfidence('email', 'test@test.com', [], 0);
-    assert(result.confidence === 0, 'Confidence is 0');
-    assert(result.status === 'DISCARDED', 'Status is DISCARDED');
-  }
+    expect(result.confidence).toBe(0);
+    expect(result.status).toBe('DISCARDED');
+  });
 
-  // ── Test 5: Batch scoring ──────────────────────────────
-
-  console.log('\nTest 5: scoreAllFields batch');
-  {
+  it('Test 5: scoreAllFields batch returns correct fields', () => {
     const results = scoreAllFields([
       {
         field: 'email',
@@ -110,85 +75,57 @@ async function runTests() {
         crossValidationScore: 0.3,
       },
     ]);
+    expect(results).toHaveLength(2);
+    expect(results[0].field).toBe('email');
+    expect(results[1].field).toBe('phone');
+  });
 
-    assert(results.length === 2, 'Returned 2 results');
-    assert(results[0].field === 'email', 'First is email');
-    assert(results[1].field === 'phone', 'Second is phone');
-  }
-
-  // ── Test 6: Overall confidence ─────────────────────────
-
-  console.log('\nTest 6: calculateOverallConfidence');
-  {
+  it('Test 6: calculateOverallConfidence returns value in [0, 1]', () => {
     const results = [
       { value: 'a@b.com', field: 'email' as const, confidence: 0.9, status: 'VERIFIED' as const, sources: [] },
       { value: '+123', field: 'phone' as const, confidence: 0.6, status: 'LOW_CONFIDENCE' as const, sources: [] },
     ];
     const overall = calculateOverallConfidence(results);
-    assert(overall > 0, `Overall > 0 (got ${overall})`);
-    assert(overall <= 1, `Overall <= 1 (got ${overall})`);
-  }
+    expect(overall).toBeGreaterThan(0);
+    expect(overall).toBeLessThanOrEqual(1);
+  });
+});
 
-  console.log('\n🧪 Cross-Validator Tests\n');
-
-  // ── Test 7: Cross-validation with matching sources ─────
-
-  console.log('Test 7: Cross-validation matching');
-  {
+describe('Cross-Validator', () => {
+  it('Test 7: Cross-validation with matching sources', () => {
     const result = validateAcrossSources('email', [
       { value: 'info@biz.com', source: 'website' },
       { value: 'info@biz.com', source: 'directory' },
       { value: 'other@biz.com', source: 'serp' },
     ]);
+    expect(result.matchCount).toBe(2);
+    expect(result.boostScore).toBeGreaterThanOrEqual(0.2);
+    expect(result.matchingSources).toContain('website');
+    expect(result.matchingSources).toContain('directory');
+  });
 
-    assert(result.matchCount === 2, `Match count is 2 (got ${result.matchCount})`);
-    assert(result.boostScore >= 0.2, `Boost >= 0.2 (got ${result.boostScore})`);
-    assert(result.matchingSources.includes('website'), 'Includes website source');
-    assert(result.matchingSources.includes('directory'), 'Includes directory source');
-  }
-
-  // ── Test 8: Email domain matches business website ──────
-
-  console.log('\nTest 8: Email domain validation');
-  {
+  it('Test 8: Email domain validation boost', () => {
     const boost = validateEmailDomain('info@mybusiness.com', 'https://www.mybusiness.com');
-    assert(boost > 0, `Domain match boost > 0 (got ${boost})`);
+    expect(boost).toBeGreaterThan(0);
 
     const noBoost = validateEmailDomain('info@gmail.com', 'https://mybusiness.com');
-    assert(noBoost === 0, `No boost for mismatched domain (got ${noBoost})`);
-  }
+    expect(noBoost).toBe(0);
+  });
 
-  // ── Test 9: Total boost calculation ────────────────────
-
-  console.log('\nTest 9: Total boost calculation');
-  {
+  it('Test 9: Total boost calculation with 3 sources', () => {
     const boost = calculateTotalBoost(
       'email',
       'info@mybiz.com',
       ['dee_website_adapter', 'directory', 'serp'],
       { businessWebsite: 'https://mybiz.com' }
     );
+    expect(boost).toBeGreaterThanOrEqual(0.2);
+    expect(boost).toBeLessThanOrEqual(1.0);
+  });
 
-    assert(boost >= 0.2, `Total boost >= 0.2 with 3 sources (got ${boost})`);
-    assert(boost <= 1.0, `Total boost <= 1.0 (got ${boost})`);
-  }
-
-  // ── Test 10: Empty cross-validation ────────────────────
-
-  console.log('\nTest 10: Empty cross-validation');
-  {
+  it('Test 10: Empty cross-validation returns zero boost', () => {
     const result = validateAcrossSources('phone', []);
-    assert(result.matchCount === 0, 'Match count is 0');
-    assert(result.boostScore === 0, 'Boost is 0');
-  }
-
-  // ── Summary ────────────────────────────────────────────
-
-  console.log(`\n${'═'.repeat(40)}`);
-  console.log(`Results: ${passed} passed, ${failed} failed`);
-  console.log(`${'═'.repeat(40)}\n`);
-
-  if (failed > 0) process.exit(1);
-}
-
-runTests().catch(console.error);
+    expect(result.matchCount).toBe(0);
+    expect(result.boostScore).toBe(0);
+  });
+});

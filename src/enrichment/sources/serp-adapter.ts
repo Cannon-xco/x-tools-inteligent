@@ -118,7 +118,7 @@ async function searchYahoo(query: string): Promise<{
   const results: RawSearchResult[] = [];
   const seenUrls = new Set<string>();
 
-  $('a').each((_: number, el: cheerio.Element) => {
+  $('a').each((_: number, el) => {
     let rawUrl = $(el).attr('href');
     if (!rawUrl) return;
 
@@ -172,7 +172,7 @@ async function searchDuckDuckGo(query: string): Promise<{
   const seenUrls = new Set<string>();
 
   // DDG Lite uses table rows for results
-  $('a.result-link, a[rel="nofollow"]').each((_: number, el: cheerio.Element) => {
+  $('a.result-link, a[rel="nofollow"]').each((_: number, el) => {
     const rawUrl = $(el).attr('href');
     if (!rawUrl || !rawUrl.startsWith('http')) return;
     if (rawUrl.includes('duckduckgo.com')) return;

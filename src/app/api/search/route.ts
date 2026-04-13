@@ -59,6 +59,12 @@ export async function POST(req: NextRequest) {
         reasons: null,
         enrichment_json: null,
         outreach_json: null,
+        deep_enrichment_json: null,
+        verified_emails: null,
+        verified_phones: null,
+        verified_socials: null,
+        confidence_scores: null,
+        deep_enriched_at: null,
       });
       saved.push({ ...b, id, hash });
     }

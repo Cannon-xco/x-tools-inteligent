@@ -33,6 +33,7 @@ export interface DeepEnrichmentRow {
   } | null;
   confidence_scores: Record<string, number> | null;
   deep_enriched_at: string | null;
+  enrichment_status: 'processing' | 'completed' | 'failed' | 'limit_reached' | null;
 }
 
 /**
@@ -109,6 +110,7 @@ export async function saveDeepEnrichment(
       verified_socials = $3,
       confidence_scores = $4,
       deep_enriched_at = CURRENT_TIMESTAMP,
+      enrichment_status = 'completed',
       updated_at = CURRENT_TIMESTAMP
     WHERE id = $5
   `;
@@ -122,6 +124,24 @@ export async function saveDeepEnrichment(
   ];
 
   await pool.query(query, values);
+}
+
+/**
+ * Update enrichment status for a lead.
+ * Used by the worker and route to track pipeline state.
+ *
+ * @param leadId - The lead ID to update
+ * @param status - New enrichment status
+ */
+export async function updateEnrichmentStatus(
+  leadId: number,
+  status: 'processing' | 'completed' | 'failed' | 'limit_reached'
+): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `UPDATE leads SET enrichment_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+    [status, leadId]
+  );
 }
 
 /**
@@ -219,7 +239,8 @@ export async function getDeepEnrichment(
       verified_phones,
       verified_socials,
       confidence_scores,
-      deep_enriched_at
+      deep_enriched_at,
+      enrichment_status
     FROM leads
     WHERE id = $1
   `;
@@ -239,6 +260,7 @@ export async function getDeepEnrichment(
     verified_socials: row.verified_socials ? JSON.parse(row.verified_socials) : null,
     confidence_scores: row.confidence_scores ? JSON.parse(row.confidence_scores) : null,
     deep_enriched_at: row.deep_enriched_at,
+    enrichment_status: (row.enrichment_status ?? null) as DeepEnrichmentRow['enrichment_status'],
   };
 }
 
@@ -261,7 +283,8 @@ export async function getAllDeepEnriched(
       verified_phones,
       verified_socials,
       confidence_scores,
-      deep_enriched_at
+      deep_enriched_at,
+      enrichment_status
     FROM leads
     WHERE deep_enriched_at IS NOT NULL
     ORDER BY deep_enriched_at DESC
@@ -277,6 +300,7 @@ export async function getAllDeepEnriched(
     verified_socials: string | null;
     confidence_scores: string | null;
     deep_enriched_at: string | null;
+    enrichment_status: string | null;
   }) => ({
     lead_id: row.lead_id,
     verified_emails: row.verified_emails ? JSON.parse(row.verified_emails) : null,
@@ -284,6 +308,7 @@ export async function getAllDeepEnriched(
     verified_socials: row.verified_socials ? JSON.parse(row.verified_socials) : null,
     confidence_scores: row.confidence_scores ? JSON.parse(row.confidence_scores) : null,
     deep_enriched_at: row.deep_enriched_at,
+    enrichment_status: (row.enrichment_status ?? null) as DeepEnrichmentRow['enrichment_status'],
   }));
 }
 

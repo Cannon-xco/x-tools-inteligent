@@ -208,9 +208,21 @@ let queueInstance: InMemoryQueue | null = null;
 
 /**
  * Get the singleton queue instance.
+ *
+ * Currently uses InMemoryQueue (sufficient for single-instance Railway deploy).
+ * When REDIS_URL is set AND `bullmq`/`ioredis` are installed, swap this
+ * function to return a BullMQ-backed adapter that implements IDeeQueue.
  */
 function getQueue(): InMemoryQueue {
   if (!queueInstance) {
+    if (process.env.REDIS_URL) {
+      console.warn(
+        '[DEE Queue] REDIS_URL is set but BullMQ adapter is not installed. ' +
+        'Falling back to InMemoryQueue. ' +
+        'Run `npm install bullmq ioredis` and create src/enrichment/queue/bullmq-queue.ts ' +
+        'to enable Redis-backed persistence.'
+      );
+    }
     queueInstance = new InMemoryQueue();
   }
   return queueInstance;

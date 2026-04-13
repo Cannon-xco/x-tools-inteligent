@@ -2,7 +2,8 @@
 // DEEP ENRICHMENT ENGINE — Worker
 //
 // Processes deep enrichment jobs from the queue.
-// Orchestrates: adapters → normalize → cross-validate → score
+// Orchestrates: seed extract → hypothesis generate →
+//   adapters (all 6, parallel) → cross-validate → score → audit log
 //
 // ⛔ This is a NEW file. Does NOT modify existing code.
 // ============================================================
@@ -10,8 +11,15 @@
 import type { DeeJob, DeepEnrichResult, ConfidenceResult, ExtractedContact } from '../types';
 import { extractFromWebsite } from '../sources/website-adapter';
 import { searchBusiness } from '../sources/serp-adapter';
+import { searchDirectories } from '../sources/directory-adapter';
+import { enrichSocials } from '../sources/social-adapter';
+import { lookupDns } from '../sources/dns-adapter';
+import { lookupWhois } from '../sources/whois-adapter';
 import { calculateConfidence, calculateOverallConfidence } from '../scoring/confidence-engine';
-import { validateAcrossSources, calculateTotalBoost } from '../scoring/cross-validator';
+import { calculateTotalBoost } from '../scoring/cross-validator';
+import { extractSeed } from '../pipeline/seed-extractor';
+import { generateHypotheses } from '../pipeline/hypothesis-generator';
+import { insertAuditEntry } from '../db/dee-queries';
 import { registerProcessor } from './dee-queue';
 
 // ── Worker Configuration ─────────────────────────────────────
@@ -22,155 +30,205 @@ const ADAPTER_TIMEOUT = 15_000;
 
 /**
  * Process a single deep enrichment job.
- * Runs all available adapters, normalizes, cross-validates, and scores.
+ * Runs all 6 adapters in parallel, cross-validates, scores, and writes audit log.
  */
 async function processJob(job: DeeJob): Promise<DeepEnrichResult> {
   const start = Date.now();
   const { input } = job;
+
+  // ── Step 1: Seed extraction ──────────────────────────────
+  const seed = extractSeed({
+    name: input.name,
+    address: input.address,
+    phone: input.phone,
+    website: input.domain,
+    niche: input.niche,
+  });
+
   const sourcesUsed: string[] = [];
 
-  // Collected raw data from all adapters
+  // Raw data buckets
   const rawEmails: Array<ExtractedContact & { adapterSource: string }> = [];
   const rawPhones: Array<ExtractedContact & { adapterSource: string }> = [];
   const allSocials: Record<string, string> = {};
-  const allPeople: Array<{ name: string; title: string; confidence: number; source: string }> = [];
+  const allPeople: Array<{ name: string; title: string; confidence: number }> = [];
+  const allSocialUrls: string[] = [];
 
-  // ── Run Website Adapter ──────────────────────────────────
+  // ── Step 2: Hypothesis generation for SERP ──────────────
+  const hypotheses = generateHypotheses({
+    name: input.name,
+    normalized_name: seed.normalized_name,
+    city: seed.city,
+    domain: seed.domain,
+    niche: input.niche,
+  });
+  const serpQueries = hypotheses.map((h) => h.query);
 
-  if (input.domain) {
-    try {
-      const websiteUrl = input.domain.startsWith('http') ? input.domain : `https://${input.domain}`;
-      const websiteResult = await withTimeout(extractFromWebsite(websiteUrl), ADAPTER_TIMEOUT);
+  // Resolve website URL
+  const websiteUrl = seed.domain
+    ? (seed.domain.startsWith('http') ? seed.domain : `https://${seed.domain}`)
+    : input.domain
+      ? (input.domain.startsWith('http') ? input.domain : `https://${input.domain}`)
+      : undefined;
 
-      sourcesUsed.push('website');
+  const searchCity = seed.city || input.address;
+  const searchName = seed.display_name || input.name;
 
-      for (const email of websiteResult.emails) {
-        rawEmails.push({ ...email, adapterSource: 'website' });
+  // ── Step 3: Run all 6 adapters in parallel ────────────────
+  const [websiteRes, serpRes, directoryRes, dnsRes, whoisRes] = await Promise.allSettled([
+    websiteUrl
+      ? withTimeout(extractFromWebsite(websiteUrl), ADAPTER_TIMEOUT)
+      : Promise.resolve(null),
+    withTimeout(searchBusiness(input.name, searchCity, serpQueries), ADAPTER_TIMEOUT),
+    withTimeout(searchDirectories(searchName, searchCity), ADAPTER_TIMEOUT),
+    seed.domain
+      ? withTimeout(lookupDns(seed.domain), ADAPTER_TIMEOUT)
+      : Promise.resolve(null),
+    seed.domain
+      ? withTimeout(lookupWhois(seed.domain), ADAPTER_TIMEOUT)
+      : Promise.resolve(null),
+  ]);
+
+  // ── Process website adapter results ──────────────────────
+  if (websiteRes.status === 'fulfilled' && websiteRes.value) {
+    sourcesUsed.push('website');
+    const r = websiteRes.value;
+    for (const e of r.emails) rawEmails.push({ ...e, adapterSource: 'website' });
+    for (const p of r.phones) rawPhones.push({ ...p, adapterSource: 'website' });
+    for (const person of r.people) allPeople.push(person);
+    for (const [platform, url] of Object.entries(r.socials)) {
+      if (url) {
+        if (!allSocials[platform]) allSocials[platform] = url;
+        allSocialUrls.push(url);
       }
-      for (const phone of websiteResult.phones) {
-        rawPhones.push({ ...phone, adapterSource: 'website' });
-      }
-      for (const [platform, url] of Object.entries(websiteResult.socials)) {
-        if (url && !allSocials[platform]) {
-          allSocials[platform] = url;
-        }
-      }
-      for (const person of websiteResult.people) {
-        allPeople.push({ ...person, source: 'website' });
-      }
-    } catch {
-      // Website adapter failed — continue with other adapters
     }
   }
 
-  // ── Run SERP Adapter ─────────────────────────────────────
-
-  try {
-    const serpResult = await withTimeout(
-      searchBusiness(input.name, input.address),
-      ADAPTER_TIMEOUT
-    );
-
+  // ── Process SERP adapter results ──────────────────────────
+  if (serpRes.status === 'fulfilled' && serpRes.value) {
     sourcesUsed.push('serp');
+    const r = serpRes.value;
+    allSocialUrls.push(...r.socialProfiles);
 
-    // If SERP found an official website and we don't have a domain, enrich it
-    if (serpResult.officialWebsite && !input.domain) {
+    // Fallback: if no domain was provided, enrich official website from SERP
+    if (r.officialWebsite && !websiteUrl) {
       try {
-        const websiteResult = await withTimeout(
-          extractFromWebsite(serpResult.officialWebsite),
-          ADAPTER_TIMEOUT
-        );
-
+        const siteRes = await withTimeout(extractFromWebsite(r.officialWebsite), ADAPTER_TIMEOUT);
         sourcesUsed.push('serp_website');
-
-        for (const email of websiteResult.emails) {
-          rawEmails.push({ ...email, adapterSource: 'serp_website' });
-        }
-        for (const phone of websiteResult.phones) {
-          rawPhones.push({ ...phone, adapterSource: 'serp_website' });
-        }
-        for (const [platform, url] of Object.entries(websiteResult.socials)) {
+        for (const e of siteRes.emails) rawEmails.push({ ...e, adapterSource: 'serp_website' });
+        for (const p of siteRes.phones) rawPhones.push({ ...p, adapterSource: 'serp_website' });
+        for (const [platform, url] of Object.entries(siteRes.socials)) {
           if (url && !allSocials[platform]) {
             allSocials[platform] = url;
+            allSocialUrls.push(url);
           }
         }
-      } catch {
-        // SERP website enrichment failed
-      }
+      } catch { /* continue */ }
     }
-
-    // Add social profiles from SERP
-    for (const socialUrl of serpResult.socialProfiles) {
-      const platform = detectPlatform(socialUrl);
-      if (platform && !allSocials[platform]) {
-        allSocials[platform] = socialUrl;
-      }
-    }
-  } catch {
-    // SERP adapter failed — continue
   }
 
-  // ── Cross-Validation & Confidence Scoring ────────────────
+  // ── Process directory adapter results ─────────────────────
+  if (directoryRes.status === 'fulfilled' && directoryRes.value) {
+    sourcesUsed.push('directory');
+    const r = directoryRes.value;
+    for (const phone of r.phones) {
+      rawPhones.push({ value: phone, source: 'directory', confidence: 0.7, adapterSource: 'directory' });
+    }
+    // Enrich first website found in directory if we have no domain yet
+    if (r.websites.length > 0 && !websiteUrl) {
+      try {
+        const siteRes = await withTimeout(extractFromWebsite(r.websites[0]), ADAPTER_TIMEOUT);
+        sourcesUsed.push('directory_website');
+        for (const e of siteRes.emails) rawEmails.push({ ...e, adapterSource: 'directory_website' });
+        for (const p of siteRes.phones) rawPhones.push({ ...p, adapterSource: 'directory_website' });
+      } catch { /* continue */ }
+    }
+  }
 
+  // ── Social adapter — aggregate all collected URLs ──────────
+  if (allSocialUrls.length > 0) {
+    try {
+      const socialRes = await withTimeout(
+        enrichSocials(allSocialUrls, 'combined', { verify: false }),
+        ADAPTER_TIMEOUT
+      );
+      if (socialRes.total_found > 0) {
+        sourcesUsed.push('social');
+        for (const [platform, url] of Object.entries(socialRes.socials)) {
+          if (url && !allSocials[platform]) allSocials[platform] = url;
+        }
+      }
+    } catch { /* continue */ }
+  }
+
+  // ── DNS/WHOIS — validation + registrant email ─────────────
+  if (dnsRes.status === 'fulfilled' && dnsRes.value) {
+    sourcesUsed.push('dns');
+  }
+  if (whoisRes.status === 'fulfilled' && whoisRes.value) {
+    sourcesUsed.push('whois');
+    const r = whoisRes.value;
+    if (r.registrant?.email) {
+      rawEmails.push({
+        value: r.registrant.email,
+        source: 'whois',
+        confidence: 0.5,
+        adapterSource: 'whois',
+      });
+    }
+  }
+
+  // ── Step 4: Cross-Validation & Confidence Scoring ─────────
   const now = new Date();
-  const businessWebsite = input.domain
-    ? (input.domain.startsWith('http') ? input.domain : `https://${input.domain}`)
-    : undefined;
 
-  // Score emails
   const scoredEmails: ConfidenceResult[] = [];
   const emailGroups = groupByValue(rawEmails, (e) => e.value.toLowerCase());
 
   for (const [emailValue, entries] of emailGroups) {
     const sources = entries.map((e) => e.source);
-    const crossBoost = calculateTotalBoost('email', emailValue, sources, { businessWebsite });
-
+    const crossBoost = calculateTotalBoost('email', emailValue, sources, { businessWebsite: websiteUrl });
     const result = calculateConfidence(
       'email',
       emailValue,
       entries.map((e) => ({ name: e.source, reliability: e.confidence, timestamp: now })),
       crossBoost
     );
-
     if (result.status !== 'DISCARDED') {
       scoredEmails.push(result);
     }
   }
 
-  // Score phones
   const scoredPhones: ConfidenceResult[] = [];
   const phoneGroups = groupByValue(rawPhones, (p) => normalizePhone(p.value));
 
   for (const [phoneValue, entries] of phoneGroups) {
     const sources = entries.map((e) => e.source);
     const crossBoost = calculateTotalBoost('phone', phoneValue, sources);
-
     const result = calculateConfidence(
       'phone',
       phoneValue,
       entries.map((e) => ({ name: e.source, reliability: e.confidence, timestamp: now })),
       crossBoost
     );
-
     if (result.status !== 'DISCARDED') {
       scoredPhones.push(result);
     }
   }
 
-  // Score people
   const scoredPeople = allPeople.map((p) => ({
     name: p.name,
     title: p.title,
     confidence: p.confidence,
   }));
 
-  // Calculate overall confidence
   const allResults = [...scoredEmails, ...scoredPhones];
   const overallConfidence = calculateOverallConfidence(allResults);
 
-  // Sort by confidence (highest first)
   scoredEmails.sort((a, b) => b.confidence - a.confidence);
   scoredPhones.sort((a, b) => b.confidence - a.confidence);
+
+  // ── Step 5: Write audit log ──────────────────────────────
+  await writeAuditLog(input.leadId, scoredEmails, scoredPhones, allSocials);
 
   return {
     leadId: input.leadId,
@@ -193,6 +251,78 @@ async function processJob(job: DeeJob): Promise<DeepEnrichResult> {
 }
 
 // ── Helpers ──────────────────────────────────────────────────
+
+/**
+ * Write scored fields to the enrichment_audit table.
+ * Failures are swallowed so audit never blocks enrichment.
+ */
+async function writeAuditLog(
+  leadId: number,
+  emails: ConfidenceResult[],
+  phones: ConfidenceResult[],
+  socials: Record<string, string>
+): Promise<void> {
+  try {
+    const entries: Promise<unknown>[] = [];
+
+    for (const email of emails) {
+      entries.push(
+        insertAuditEntry({
+          lead_id: leadId,
+          field_name: 'email',
+          value: email.value,
+          source: email.sources.map((s) => s.name).join(', '),
+          confidence: email.confidence,
+          status: mapConfidenceStatus(email.status),
+        })
+      );
+    }
+
+    for (const phone of phones) {
+      entries.push(
+        insertAuditEntry({
+          lead_id: leadId,
+          field_name: 'phone',
+          value: phone.value,
+          source: phone.sources.map((s) => s.name).join(', '),
+          confidence: phone.confidence,
+          status: mapConfidenceStatus(phone.status),
+        })
+      );
+    }
+
+    for (const [platform, url] of Object.entries(socials)) {
+      if (url) {
+        entries.push(
+          insertAuditEntry({
+            lead_id: leadId,
+            field_name: 'social',
+            value: url,
+            source: platform,
+            confidence: 0.7,
+            status: 'verified',
+          })
+        );
+      }
+    }
+
+    await Promise.allSettled(entries);
+  } catch { /* audit log failures must never block enrichment */ }
+}
+
+/**
+ * Map internal ConfidenceStatus to AuditEntry status.
+ */
+function mapConfidenceStatus(
+  status: string
+): 'pending' | 'verified' | 'low_confidence' | 'discarded' {
+  switch (status) {
+    case 'VERIFIED': return 'verified';
+    case 'LOW_CONFIDENCE': return 'low_confidence';
+    case 'DISCARDED': return 'discarded';
+    default: return 'pending';
+  }
+}
 
 /**
  * Run a promise with timeout. Rejects if timeout exceeded.
@@ -231,20 +361,6 @@ function normalizePhone(phone: string): string {
   const hasPlus = phone.startsWith('+');
   const digits = phone.replace(/\D/g, '');
   return hasPlus ? `+${digits}` : digits;
-}
-
-/**
- * Detect social media platform from URL.
- */
-function detectPlatform(url: string): string | null {
-  const lower = url.toLowerCase();
-  if (lower.includes('linkedin.com')) return 'linkedin';
-  if (lower.includes('instagram.com')) return 'instagram';
-  if (lower.includes('facebook.com')) return 'facebook';
-  if (lower.includes('twitter.com') || lower.includes('x.com')) return 'twitter';
-  if (lower.includes('tiktok.com')) return 'tiktok';
-  if (lower.includes('youtube.com')) return 'youtube';
-  return null;
 }
 
 // ── Worker Registration ──────────────────────────────────────

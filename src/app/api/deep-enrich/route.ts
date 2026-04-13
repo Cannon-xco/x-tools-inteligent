@@ -17,7 +17,14 @@ import type {
   DeepEnrichSource,
   DeepEnrichStatus,
   DbLeadWithDeepEnrich,
+  DeepEnrichEmail,
+  DeepEnrichPhone,
+  DeepEnrichPerson,
 } from '@/types/deep-enrich';
+import type { DeepEnrichInput, ConfidenceResult } from '@/enrichment/types';
+import { addDeepEnrichJob, waitForJob } from '@/enrichment/queue/dee-queue';
+import { initDeeWorker } from '@/enrichment/queue/dee-worker';
+import { saveDeepEnrichment } from '@/enrichment/db/dee-queries';
 
 // Runtime configuration
 export const runtime = 'nodejs';
@@ -29,32 +36,105 @@ const DEFAULT_SOURCES: DeepEnrichSource[] = ['website', 'serp', 'directory', 'so
 /** Default timeout in milliseconds */
 const DEFAULT_TIMEOUT = 30000;
 
+// ── Worker lazy-init ─────────────────────────────────────────
+
+let _workerInitialized = false;
+
 /**
- * Placeholder for deep enrichment pipeline.
- * Will be replaced with actual implementation after team merge.
+ * Ensure the DEE worker is registered with the queue.
+ * Safe to call multiple times — only initializes once.
+ */
+function ensureDeeWorker(): void {
+  if (!_workerInitialized) {
+    initDeeWorker();
+    _workerInitialized = true;
+  }
+}
+
+/**
+ * Run the real DEE pipeline via the queue+worker system.
  *
  * @param lead - The lead to enrich
- * @param sources - Sources to use for enrichment
+ * @param sources - Sources to use for enrichment (passed as context, worker uses all adapters)
+ * @param timeoutMs - Max wait time in ms
  * @returns Promise resolving to deep enrichment result
  */
 async function runDeepEnrichPipeline(
   lead: DbLead,
-  sources: DeepEnrichSource[]
+  sources: DeepEnrichSource[],
+  timeoutMs: number = DEFAULT_TIMEOUT
 ): Promise<DeepEnrichResult> {
-  // TODO: Integrate with actual DEE pipeline after team merge
-  // For now, return mock structure
-  await insertLog('info', `Running deep enrichment pipeline for lead ${lead.id} with sources: ${sources.join(', ')}`);
+  ensureDeeWorker();
+
+  await insertLog('info', `Submitting DEE job for lead ${lead.id} (${lead.name}) — sources: ${sources.join(', ')}`);
+
+  const input: DeepEnrichInput = {
+    leadId: lead.id,
+    name: lead.name,
+    address: lead.address ?? '',
+    domain: lead.website ?? undefined,
+    phone: lead.phone ?? undefined,
+  };
+
+  const jobId = await addDeepEnrichJob(lead.id, input);
+  const job = await waitForJob(jobId, timeoutMs);
+
+  if (!job) {
+    throw new Error(`DEE job ${jobId} timed out after ${timeoutMs}ms`);
+  }
+
+  if (job.status === 'failed') {
+    throw new Error(job.error ?? 'DEE pipeline failed with unknown error');
+  }
+
+  if (!job.result) {
+    throw new Error(`DEE job ${jobId} completed but returned no result`);
+  }
+
+  // Convert internal ConfidenceResult to API types (DeepEnrichEmail/DeepEnrichPhone)
+  return convertToApiResult(job.result, sources);
+}
+
+/**
+ * Convert internal DEE result to API response types.
+ */
+function convertToApiResult(
+  internalResult: { emails: ConfidenceResult[]; phones: ConfidenceResult[]; people: Array<{ name: string; title: string; confidence: number }>; socials: Record<string, string | undefined>; leadId: number; overallConfidence: number; duration_ms: number; enriched_at: string },
+  sources: DeepEnrichSource[]
+): DeepEnrichResult {
+  // Convert emails: ConfidenceResult[] -> DeepEnrichEmail[]
+  const emails: DeepEnrichEmail[] = internalResult.emails.map((e) => ({
+    value: e.value,
+    confidence: e.confidence,
+    status: e.status === 'VERIFIED' ? 'VERIFIED' : e.status === 'DISCARDED' ? 'INVALID' : 'UNVERIFIED',
+    sources: sources as DeepEnrichSource[],
+  }));
+
+  // Convert phones: ConfidenceResult[] -> DeepEnrichPhone[]
+  const phones: DeepEnrichPhone[] = internalResult.phones.map((p) => ({
+    value: p.value,
+    confidence: p.confidence,
+    status: p.status === 'VERIFIED' ? 'VERIFIED' : p.status === 'DISCARDED' ? 'INVALID' : 'UNVERIFIED',
+    sources: sources as DeepEnrichSource[],
+  }));
+
+  // Convert people
+  const people: DeepEnrichPerson[] = internalResult.people.map((p) => ({
+    name: p.name,
+    title: p.title,
+    confidence: p.confidence,
+  }));
 
   return {
-    leadId: lead.id,
-    emails: [],
-    phones: [],
-    socials: {},
-    people: [],
-    overallConfidence: 0,
+    leadId: internalResult.leadId,
+    emails,
+    phones,
+    socials: internalResult.socials,
+    people,
+    overallConfidence: internalResult.overallConfidence,
     sources_used: sources,
-    duration_ms: 0,
-    enriched_at: new Date().toISOString(),
+    duration_ms: internalResult.duration_ms,
+    enriched_at: internalResult.enriched_at,
   };
 }
 
@@ -141,7 +221,7 @@ async function getLeadWithDeepEnrich(id: number): Promise<DbLeadWithDeepEnrich |
  */
 function determineEnrichStatus(lead: DbLeadWithDeepEnrich): DeepEnrichStatus {
   if (lead.deep_enriched_at) {
-    return 'enriched';
+    return 'completed';
   }
   if (lead.deep_enrichment_json) {
     try {
@@ -149,7 +229,7 @@ function determineEnrichStatus(lead: DbLeadWithDeepEnrich): DeepEnrichStatus {
       if (data.error || data.failed) {
         return 'failed';
       }
-      return 'pending';
+      return 'processing';
     } catch {
       return 'not_started';
     }
@@ -163,7 +243,7 @@ function determineEnrichStatus(lead: DbLeadWithDeepEnrich): DeepEnrichStatus {
  * @param req - Next.js request object
  * @returns JSON response with enrichment result
  */
-export async function POST(req: NextRequest): Promise<NextResponse<DeepEnrichApiResponse<DeepEnrichResult>>> {
+export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as DeepEnrichRequestBody;
     const { id, options = {} } = body;
@@ -171,7 +251,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DeepEnrichApi
     // Validate input
     if (typeof id !== 'number' || isNaN(id) || id <= 0) {
       await insertLog('warn', 'Deep enrich request rejected: invalid lead ID');
-      return NextResponse.json<DeepEnrichApiResponse>({
+      return NextResponse.json<DeepEnrichApiResponse<DeepEnrichResult | null>>({
         success: false,
         error: 'Lead ID is required and must be a valid number',
       }, { status: 400 });
@@ -181,7 +261,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DeepEnrichApi
     const lead = await getLeadById(id);
     if (!lead) {
       await insertLog('warn', `Deep enrich request rejected: lead ${id} not found`);
-      return NextResponse.json<DeepEnrichApiResponse>({
+      return NextResponse.json<DeepEnrichApiResponse<DeepEnrichResult | null>>({
         success: false,
         error: `Lead ${id} not found`,
       }, { status: 404 });
@@ -226,13 +306,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<DeepEnrichApi
     let result: DeepEnrichResult;
     try {
       result = await Promise.race([
-        runDeepEnrichPipeline(lead, sources),
+        runDeepEnrichPipeline(lead, sources, timeout),
         timeoutPromise,
       ]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await insertLog('error', `Deep enrichment failed for lead ${id}: ${msg}`);
-      return NextResponse.json<DeepEnrichApiResponse>({
+      return NextResponse.json<DeepEnrichApiResponse<DeepEnrichResult | null>>({
         success: false,
         error: `Deep enrichment failed: ${msg}`,
       }, { status: 500 });
@@ -244,8 +324,33 @@ export async function POST(req: NextRequest): Promise<NextResponse<DeepEnrichApi
     result.overallConfidence = calculateOverallConfidence(result);
     result.enriched_at = new Date().toISOString();
 
-    // Save to database
+    // Save to database — full JSON blob
     await updateLeadDeepEnrichment(id, result);
+
+    // Also populate typed columns for direct querying
+    try {
+      await saveDeepEnrichment(id, {
+        verified_emails: result.emails.map((e) => ({
+          value: e.value,
+          original: e.value,
+          source: e.sources.join(', '),
+          confidence: e.confidence,
+        })),
+        verified_phones: result.phones.map((p) => ({
+          value: p.value,
+          original: p.value,
+          source: p.sources.join(', '),
+          confidence: p.confidence,
+        })),
+        verified_socials: result.socials,
+        confidence_scores: Object.fromEntries([
+          ...result.emails.map((e) => [e.value, e.confidence] as [string, number]),
+          ...result.phones.map((p) => [p.value, p.confidence] as [string, number]),
+        ]),
+      });
+    } catch (saveErr) {
+      await insertLog('warn', `Failed to save typed enrichment columns for lead ${id}: ${saveErr}`);
+    }
 
     await insertLog('info', `Deep enrichment completed for lead ${id} in ${duration}ms with confidence ${result.overallConfidence}`);
 
@@ -257,7 +362,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DeepEnrichApi
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await insertLog('error', `Deep enrich API error: ${msg}`);
-    return NextResponse.json<DeepEnrichApiResponse>({
+    return NextResponse.json<DeepEnrichApiResponse<DeepEnrichResult | null>>({
       success: false,
       error: msg,
     }, { status: 500 });
@@ -270,14 +375,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<DeepEnrichApi
  * @param req - Next.js request object
  * @returns JSON response with enrichment status
  */
-export async function GET(req: NextRequest): Promise<NextResponse<DeepEnrichApiResponse<DeepEnrichStatusResponse>>> {
+export async function GET(req: NextRequest) {
   try {
     // Get lead ID from query params
     const { searchParams } = new URL(req.url);
     const idParam = searchParams.get('id');
 
     if (!idParam) {
-      return NextResponse.json<DeepEnrichApiResponse>({
+      return NextResponse.json<DeepEnrichApiResponse<DeepEnrichStatusResponse | null>>({
         success: false,
         error: 'Lead ID is required (use ?id=<number>)',
       }, { status: 400 });
@@ -285,7 +390,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<DeepEnrichApiR
 
     const id = parseInt(idParam, 10);
     if (isNaN(id) || id <= 0) {
-      return NextResponse.json<DeepEnrichApiResponse>({
+      return NextResponse.json<DeepEnrichApiResponse<DeepEnrichStatusResponse | null>>({
         success: false,
         error: 'Lead ID must be a valid number',
       }, { status: 400 });
@@ -294,7 +399,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<DeepEnrichApiR
     // Get lead with deep enrichment data
     const lead = await getLeadWithDeepEnrich(id);
     if (!lead) {
-      return NextResponse.json<DeepEnrichApiResponse>({
+      return NextResponse.json<DeepEnrichApiResponse<DeepEnrichStatusResponse | null>>({
         success: false,
         error: `Lead ${id} not found`,
       }, { status: 404 });
@@ -316,7 +421,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<DeepEnrichApiR
     };
 
     // Include additional data if enriched
-    if (status === 'enriched' && lead.deep_enrichment_json) {
+    if (status === 'completed' && lead.deep_enrichment_json) {
       try {
         const data = JSON.parse(lead.deep_enrichment_json) as DeepEnrichResult;
         response.enriched_at = lead.deep_enriched_at ?? undefined;
@@ -336,7 +441,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<DeepEnrichApiR
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await insertLog('error', `Deep enrich status API error: ${msg}`);
-    return NextResponse.json<DeepEnrichApiResponse>({
+    return NextResponse.json<DeepEnrichApiResponse<DeepEnrichStatusResponse | null>>({
       success: false,
       error: msg,
     }, { status: 500 });

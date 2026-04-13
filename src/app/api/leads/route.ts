@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
       reasons: row.reasons ? JSON.parse(row.reasons) as string[] : undefined,
       enrichment: row.enrichment_json ? JSON.parse(row.enrichment_json) as EnrichmentData : undefined,
       outreach: row.outreach_json ? JSON.parse(row.outreach_json) as OutreachDraft : undefined,
+      deepEnrichment: row.deep_enrichment_json ? JSON.parse(row.deep_enrichment_json) : undefined,
       created_at: row.created_at,
       updated_at: row.updated_at,
     }));

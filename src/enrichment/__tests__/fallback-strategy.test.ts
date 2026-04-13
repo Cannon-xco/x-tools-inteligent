@@ -11,9 +11,10 @@ import {
   shouldSkipSource,
   getExecutionSummary,
   STAGE_DEFINITIONS,
-  SourceExecution,
-  PipelineExecution,
+  type SourceExecution,
+  type PipelineExecution,
 } from '../pipeline/fallback-strategy';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('Fallback Strategy', () => {
   /**
@@ -21,7 +22,7 @@ describe('Fallback Strategy', () => {
    */
   describe('executeWithFallback', () => {
     it('should succeed on first attempt', async () => {
-      const mockFn = jest.fn().mockResolvedValue({ data: 'success' });
+      const mockFn = vi.fn().mockResolvedValue({ data: 'success' });
 
       const result = await executeWithFallback('test-source', mockFn);
 
@@ -39,7 +40,7 @@ describe('Fallback Strategy', () => {
     it('should succeed after retry', async () => {
       // Fail first 2 times, succeed on 3rd
       let callCount = 0;
-      const mockFn = jest.fn().mockImplementation(() => {
+      const mockFn = vi.fn().mockImplementation(() => {
         callCount++;
         if (callCount < 2) {
           return Promise.reject(new Error('Temporary error'));
@@ -62,7 +63,7 @@ describe('Fallback Strategy', () => {
      * Test Case 3: Source timeout
      */
     it('should handle timeout', async () => {
-      const slowFn = jest.fn().mockImplementation(
+      const slowFn = vi.fn().mockImplementation(
         () => new Promise((resolve) => setTimeout(resolve, 10000))
       );
 
@@ -84,7 +85,7 @@ describe('Fallback Strategy', () => {
       let lastTimestamp = Date.now();
 
       let callCount = 0;
-      const mockFn = jest.fn().mockImplementation(() => {
+      const mockFn = vi.fn().mockImplementation(() => {
         const now = Date.now();
         if (callCount > 0) {
           delays.push(now - lastTimestamp);
@@ -110,7 +111,7 @@ describe('Fallback Strategy', () => {
     });
 
     it('should return failed status after all retries exhausted', async () => {
-      const mockFn = jest.fn().mockRejectedValue(new Error('Persistent error'));
+      const mockFn = vi.fn().mockRejectedValue(new Error('Persistent error'));
 
       const result = await executeWithFallback('failing-source', mockFn, {
         maxRetries: 2,
@@ -135,11 +136,11 @@ describe('Fallback Strategy', () => {
           sources: [
             {
               name: 'website',
-              execute: jest.fn().mockResolvedValue({ url: 'https://example.com' }),
+              execute: vi.fn().mockResolvedValue({ url: 'https://example.com' }),
             },
             {
               name: 'serp',
-              execute: jest.fn().mockRejectedValue(new Error('SERP failed')),
+              execute: vi.fn().mockRejectedValue(new Error('SERP failed')),
             },
           ],
         },
@@ -148,7 +149,7 @@ describe('Fallback Strategy', () => {
           sources: [
             {
               name: 'directory',
-              execute: jest.fn().mockResolvedValue({ listings: [] }),
+              execute: vi.fn().mockResolvedValue({ listings: [] }),
             },
           ],
         },
@@ -181,7 +182,7 @@ describe('Fallback Strategy', () => {
           sources: [
             {
               name: 'source1',
-              execute: jest.fn().mockImplementation(async () => {
+              execute: vi.fn().mockImplementation(async () => {
                 executionOrder.push('source1-start');
                 await new Promise((r) => setTimeout(r, 50));
                 executionOrder.push('source1-end');
@@ -190,7 +191,7 @@ describe('Fallback Strategy', () => {
             },
             {
               name: 'source2',
-              execute: jest.fn().mockImplementation(async () => {
+              execute: vi.fn().mockImplementation(async () => {
                 executionOrder.push('source2-start');
                 await new Promise((r) => setTimeout(r, 50));
                 executionOrder.push('source2-end');
@@ -224,7 +225,7 @@ describe('Fallback Strategy', () => {
           sources: [
             {
               name: 'only-source',
-              execute: jest.fn().mockResolvedValue({}),
+              execute: vi.fn().mockResolvedValue({}),
             },
           ],
         },
@@ -241,12 +242,12 @@ describe('Fallback Strategy', () => {
   describe('executeStandardPipeline', () => {
     it('should execute with standard stage definitions', async () => {
       const adapters = {
-        website: jest.fn().mockResolvedValue({ found: true }),
-        serp: jest.fn().mockResolvedValue({ results: [] }),
-        directory: jest.fn().mockResolvedValue({ listings: [] }),
-        social: jest.fn().mockResolvedValue({ profiles: [] }),
-        dns: jest.fn().mockResolvedValue({ valid: true }),
-        whois: jest.fn().mockResolvedValue({ data: {} }),
+        website: vi.fn().mockResolvedValue({ found: true }),
+        serp: vi.fn().mockResolvedValue({ results: [] }),
+        directory: vi.fn().mockResolvedValue({ listings: [] }),
+        social: vi.fn().mockResolvedValue({ profiles: [] }),
+        dns: vi.fn().mockResolvedValue({ valid: true }),
+        whois: vi.fn().mockResolvedValue({ data: {} }),
       };
 
       const result = await executeStandardPipeline(adapters);
@@ -263,7 +264,7 @@ describe('Fallback Strategy', () => {
 
     it('should filter out missing adapters', async () => {
       const adapters = {
-        website: jest.fn().mockResolvedValue({ found: true }),
+        website: vi.fn().mockResolvedValue({ found: true }),
         // Missing: serp, directory, social, dns, whois
       };
 
@@ -431,7 +432,7 @@ describe('Fallback Strategy', () => {
 
   describe('Configuration', () => {
     it('should use custom configuration', async () => {
-      const mockFn = jest.fn().mockRejectedValue(new Error('Error'));
+      const mockFn = vi.fn().mockRejectedValue(new Error('Error'));
 
       const result = await executeWithFallback('config-test', mockFn, {
         maxRetries: 1,
@@ -444,7 +445,7 @@ describe('Fallback Strategy', () => {
     });
 
     it('should use default configuration when not provided', async () => {
-      const mockFn = jest.fn().mockResolvedValue({});
+      const mockFn = vi.fn().mockResolvedValue({});
 
       const result = await executeWithFallback('default-config', mockFn);
 

@@ -36,9 +36,10 @@ const allSources: DeepEnrichSource[] = [
 
 // Valid: All status types
 const allStatuses: DeepEnrichStatus[] = [
-  'pending',
-  'enriched',
+  'processing',
+  'completed',
   'failed',
+  'limit_reached',
   'not_started',
 ];
 
@@ -144,10 +145,10 @@ const validSummary: DeepEnrichSummary = {
   people_found: 1,
 };
 
-// Valid: Status response - enriched
+// Valid: Status response - completed
 const enrichedStatus: DeepEnrichStatusResponse = {
   leadId: 123,
-  status: 'enriched',
+  status: 'completed',
   enriched_at: '2025-04-10T14:30:00.000Z',
   overallConfidence: 0.82,
   summary: validSummary,

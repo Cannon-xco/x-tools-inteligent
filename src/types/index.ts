@@ -3,6 +3,8 @@
 // Local Business Lead Generation Engine
 // ============================================================
 
+import type { DeepEnrichEmail, DeepEnrichPhone, DeepEnrichSocials, DeepEnrichPerson, DeepEnrichSource } from './deep-enrich';
+
 export interface BusinessListing {
   id?: number;
   hash?: string;
@@ -18,6 +20,15 @@ export interface BusinessListing {
   reasons?: string[];
   enrichment?: EnrichmentData;
   outreach?: OutreachDraft;
+  deepEnrichment?: {
+    emails: DeepEnrichEmail[];
+    phones: DeepEnrichPhone[];
+    socials: DeepEnrichSocials;
+    people: DeepEnrichPerson[];
+    overallConfidence: number;
+    sources_used: DeepEnrichSource[];
+    enriched_at: string;
+  };
   created_at?: string;
   updated_at?: string;
 }
@@ -114,6 +125,41 @@ export interface OutreachRequest {
   review_count?: number;
 }
 
+// ── Auto Outreach (with Deep Enrichment) ───────────────────────
+
+export interface AutoOutreachInput {
+  businessName: string;
+  location: string;
+  niche: string;
+  deepEnrichment: {
+    emails: Array<{ value: string; confidence: number }>;
+    phones: Array<{ value: string; confidence: number }>;
+    socials: {
+      instagram?: string;
+      facebook?: string;
+      linkedin?: string;
+      twitter?: string;
+      tiktok?: string;
+      youtube?: string;
+    };
+    overallConfidence: number;
+  };
+  enrichment?: {
+    tech?: {
+      cms?: { value: string };
+      detected_tech?: { value: string[] };
+    };
+    website?: {
+      has_ssl?: { value: boolean };
+      has_booking?: { value: boolean };
+      has_contact_form?: { value: boolean };
+      social_links?: { value: string[] };
+    };
+  };
+  rating?: number;
+  review_count?: number;
+}
+
 // ── Search / API ─────────────────────────────────────────────
 
 export interface SearchRequest {
@@ -158,6 +204,12 @@ export interface DbLead {
   reasons: string | null; // JSON
   enrichment_json: string | null; // JSON
   outreach_json: string | null; // JSON
+  deep_enrichment_json: string | null; // JSON
+  verified_emails: string | null; // JSON
+  verified_phones: string | null; // JSON
+  verified_socials: string | null; // JSON
+  confidence_scores: string | null; // JSON
+  deep_enriched_at: string | null;
   created_at: string;
   updated_at: string;
 }

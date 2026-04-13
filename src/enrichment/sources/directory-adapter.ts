@@ -14,7 +14,7 @@ import * as cheerio from 'cheerio';
 /** A single result entry from a business directory. */
 export interface DirectoryEntry {
   /** Which directory this came from. */
-  source: 'yellowpages' | 'yelp';
+  source: 'yellowpages' | 'yelp' | 'bbb' | 'chamber';
   /** Business name as found in the directory. */
   name: string;
   /** Phone number (raw string). */
@@ -273,13 +273,119 @@ export async function searchYelp(
   return entries;
 }
 
+// ── BBB ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Search bisnis di Better Business Bureau (BBB).
+ *
+ * @param name - Business name to search for.
+ * @param city - City / location to narrow the search.
+ * @returns Array of `DirectoryEntry` with `source: 'bbb'`.
+ */
+export async function searchBbb(
+  name: string,
+  city: string,
+): Promise<DirectoryEntry[]> {
+  const searchUrl =
+    `https://www.bbb.org/search?find_text=${encodeURIComponent(name)}` +
+    `&find_loc=${encodeURIComponent(city)}&find_country=USA`;
+
+  const html = await fetchHtml(searchUrl);
+  if (!html) return [];
+
+  const $ = cheerio.load(html);
+  const entries: DirectoryEntry[] = [];
+
+  $('[class*="result-"], [class*="ResultCard"], .result-card, article[data-testid]').each((_i, el) => {
+    const $el = $(el);
+    const resultName = $el
+      .find('[class*="businessName"], h3, h2, .business-name')
+      .first()
+      .text()
+      .trim();
+
+    if (!resultName || !isMatch(name, resultName)) return;
+
+    const rawPhone =
+      $el.find('[class*="phone"], a[href^="tel:"]').first().text().trim() || undefined;
+
+    const rawAddress =
+      $el.find('[class*="address"], address').first().text().trim().replace(/\s+/g, ' ') || undefined;
+
+    entries.push({
+      source: 'bbb',
+      name: resultName,
+      phone: rawPhone,
+      address: rawAddress,
+      match_confidence: matchConfidence(name, resultName),
+    });
+  });
+
+  return entries;
+}
+
+// ── Chamber of Commerce ───────────────────────────────────────────────────────
+
+/**
+ * Search bisnis di ChamberOfCommerce.com directory.
+ *
+ * @param name - Business name to search for.
+ * @param city - City / location to narrow the search.
+ * @returns Array of `DirectoryEntry` with `source: 'chamber'`.
+ */
+export async function searchChamber(
+  name: string,
+  city: string,
+): Promise<DirectoryEntry[]> {
+  const searchUrl =
+    `https://www.chamberofcommerce.com/business-directory/search` +
+    `?keyword=${encodeURIComponent(name)}&location=${encodeURIComponent(city)}`;
+
+  const html = await fetchHtml(searchUrl);
+  if (!html) return [];
+
+  const $ = cheerio.load(html);
+  const entries: DirectoryEntry[] = [];
+
+  $('[class*="result"], [class*="listing"], .biz-card, article').each((_i, el) => {
+    const $el = $(el);
+    const resultName = $el
+      .find('h2, h3, [class*="name"], [class*="title"]')
+      .first()
+      .text()
+      .trim();
+
+    if (!resultName || !isMatch(name, resultName)) return;
+
+    const rawPhone =
+      $el.find('a[href^="tel:"], [class*="phone"]').first().text().trim() || undefined;
+
+    const rawAddress =
+      $el.find('address, [class*="address"]').first().text().trim().replace(/\s+/g, ' ') || undefined;
+
+    const websiteHref =
+      $el.find('a[href^="http"]:not([href*="chamberofcommerce.com"])').attr('href') || undefined;
+
+    entries.push({
+      source: 'chamber',
+      name: resultName,
+      phone: rawPhone,
+      address: rawAddress,
+      website: websiteHref,
+      match_confidence: matchConfidence(name, resultName),
+    });
+  });
+
+  return entries;
+}
+
 // ── Aggregator ────────────────────────────────────────────────────────────────
 
 /**
  * Search di semua directories secara parallel.
  *
- * Runs YellowPages and Yelp searches concurrently and merges the results.
- * If one directory fails (timeout, HTTP error) the other's results are still returned.
+ * Runs YellowPages, Yelp, BBB, and Chamber of Commerce searches concurrently
+ * and merges the results. If any directory fails the others still return results.
  *
  * @param name - Business name to search for.
  * @param city - City / location for the search.
@@ -291,12 +397,14 @@ export async function searchDirectories(
 ): Promise<DirectoryAdapterResult> {
   const start = Date.now();
 
-  const [ypEntries, yelpEntries] = await Promise.all([
+  const [ypEntries, yelpEntries, bbbEntries, chamberEntries] = await Promise.all([
     searchYellowPages(name, city),
     searchYelp(name, city),
+    searchBbb(name, city),
+    searchChamber(name, city),
   ]);
 
-  const entries: DirectoryEntry[] = [...ypEntries, ...yelpEntries];
+  const entries: DirectoryEntry[] = [...ypEntries, ...yelpEntries, ...bbbEntries, ...chamberEntries];
 
   // Aggregate and deduplicate phones
   const phones = [

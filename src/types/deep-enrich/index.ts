@@ -9,9 +9,10 @@
 export type DeepEnrichSource = 'website' | 'serp' | 'directory' | 'social' | 'dns' | 'whois';
 
 /**
- * Status of deep enrichment for a lead
+ * Status of deep enrichment for a lead.
+ * Matches the `enrichment_status` column values in the DB.
  */
-export type DeepEnrichStatus = 'pending' | 'enriched' | 'failed' | 'not_started';
+export type DeepEnrichStatus = 'processing' | 'completed' | 'failed' | 'limit_reached' | 'not_started';
 
 /**
  * Email verification status

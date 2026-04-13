@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import type {
   DeepEnrichEmail,
@@ -83,7 +83,7 @@ function SectionHeader({
   icon: string;
   title: string;
   count: number;
-}): JSX.Element {
+}): React.ReactElement {
   return (
     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
       <span>{icon}</span>
@@ -98,7 +98,7 @@ function SectionHeader({
 /**
  * Source tag component
  */
-function SourceTag({ source }: { source: string }): JSX.Element {
+function SourceTag({ source }: { source: string }): React.ReactElement {
   return (
     <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/10">
       {source}
@@ -128,7 +128,7 @@ function SourceTag({ source }: { source: string }): JSX.Element {
  * />
  * ```
  */
-export function DeepEnrichPanel({ leadId, data }: DeepEnrichPanelProps): JSX.Element {
+export function DeepEnrichPanel({ leadId, data }: DeepEnrichPanelProps): React.ReactElement {
   const [isOpen, setIsOpen] = useState(false);
 
   const hasData = data !== null && data !== undefined;

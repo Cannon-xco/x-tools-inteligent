@@ -93,7 +93,7 @@ export function ConfidenceBadge({
   value,
   label,
   size = 'sm',
-}: ConfidenceBadgeProps): JSX.Element {
+}: ConfidenceBadgeProps) {
   // Clamp value between 0 and 1
   const clampedValue = Math.max(0, Math.min(1, value));
   const config = getBadgeConfig(clampedValue);
@@ -131,7 +131,7 @@ export function ConfidenceBadge({
  * @param value - Confidence score 0-1
  * @returns Icon element
  */
-export function ConfidenceIcon({ value }: { value: number }): JSX.Element {
+export function ConfidenceIcon({ value }: { value: number }) {
   const clampedValue = Math.max(0, Math.min(1, value));
   const config = getBadgeConfig(clampedValue);
 

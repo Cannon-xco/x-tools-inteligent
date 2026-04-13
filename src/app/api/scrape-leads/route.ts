@@ -6,10 +6,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scrapeGoogleMaps } from '@/lib/maps/scraper';
 import { enrichWebsite, flattenEnrichment } from '@/lib/enrich/website';
-import { upsertLead, insertLog } from '@/lib/db/client';
+import { upsertLead, insertLog, updateLeadDeepEnrichment } from '@/lib/db/client';
 import { discoverBusinessLinks } from '@/lib/enrich/search-engine';
 import { createHash } from 'crypto';
 import pLimit from 'p-limit'; // Fast concurrency tracking
+import { addDeepEnrichJob, waitForJob } from '@/enrichment/queue/dee-queue';
+import { initDeeWorker } from '@/enrichment/queue/dee-worker';
+import type { DeepEnrichResult } from '@/types/deep-enrich';
+import { generateAutoOutreach } from '@/lib/ai/generator';
+import { updateLeadOutreach } from '@/lib/db/client';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 min timeout for heavy concurrent scraping
@@ -30,6 +35,13 @@ export interface ScrapedLeadResponse {
   phones: string[];
   technologies: string[];
   socials: string[];
+  outreach?: {
+    subject: string;
+    body: string;
+    generated_at: string;
+    source: 'ai' | 'template';
+    model?: string;
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -118,7 +130,7 @@ export async function POST(req: NextRequest) {
          dbEnrichment.website.has_social = { value: true, source: 'merged', confidence: 0.9 };
       }
 
-      await upsertLead({
+      const savedLeadId = await upsertLead({
         hash,
         place_id: b.place_id ?? null,
         name: b.name,
@@ -132,7 +144,104 @@ export async function POST(req: NextRequest) {
         reasons: null,
         enrichment_json: dbEnrichment ? JSON.stringify(dbEnrichment) : null,
         outreach_json: null,
+        deep_enrichment_json: null,
+        verified_emails: null,
+        verified_phones: null,
+        verified_socials: null,
+        confidence_scores: null,
+        deep_enriched_at: null,
       });
+
+      // ── AUTO DEEP ENRICHMENT ────────────────────────────────
+      // Run deep-enrichment automatically after lead is saved
+      try {
+        initDeeWorker();
+        const deeInput = {
+          leadId: savedLeadId,
+          name: b.name,
+          address: b.address,
+          domain: finalWebsite || undefined,
+          phone: b.phone ?? undefined,
+        };
+        const jobId = await addDeepEnrichJob(savedLeadId, deeInput);
+        const job = await waitForJob(jobId, 25000); // 25s timeout per lead
+        
+        if (job?.status === 'completed' && job.result) {
+          // Cast job.result to any to access DeepEnrichResult properties
+          const rr = job.result as any;
+          // Update lead with deep enrichment results
+          const deepEnrichment: DeepEnrichResult = {
+            leadId: savedLeadId,
+            emails: rr.emails.map((e: any) => ({
+              value: e.value,
+              confidence: e.confidence,
+              status: e.status === 'VERIFIED' ? 'VERIFIED' : e.status === 'DISCARDED' ? 'INVALID' : 'UNVERIFIED',
+              sources: e.sources as any,
+            })),
+            phones: rr.phones.map((p: any) => ({
+              value: p.value,
+              confidence: p.confidence,
+              status: p.status === 'VERIFIED' ? 'VERIFIED' : p.status === 'DISCARDED' ? 'INVALID' : 'UNVERIFIED',
+              sources: p.sources as any,
+            })),
+            socials: rr.socials,
+            people: rr.people.map((p: any) => ({
+              name: p.name,
+              title: p.title,
+              confidence: p.confidence,
+            })),
+            overallConfidence: rr.overallConfidence ?? 0,
+            sources_used: rr.sources_used ?? [],
+            duration_ms: rr.duration_ms ?? 0,
+            enriched_at: rr.enriched_at ?? new Date().toISOString(),
+          };
+          
+          await updateLeadDeepEnrichment(savedLeadId, JSON.stringify(deepEnrichment));
+          
+          // Update response with deep enrichment data
+          leadResponse.emails = deepEnrichment.emails.map(e => e.value);
+          leadResponse.phones = [...leadResponse.phones, ...deepEnrichment.phones.map(p => p.value)];
+          
+          // ── AUTO OUTREACH (Human Feel) ─────────────────────────
+          try {
+            const flatEnrich = flattenEnrichment(dbEnrichment);
+            const outreachInput = {
+              businessName: b.name,
+              location: b.address,
+              niche: keyword,
+              deepEnrichment: {
+                emails: deepEnrichment.emails,
+                phones: deepEnrichment.phones,
+                socials: deepEnrichment.socials,
+                overallConfidence: deepEnrichment.overallConfidence,
+              },
+              enrichment: {
+                tech: flatEnrich.cms ? { cms: { value: flatEnrich.cms }, detected_tech: { value: flatEnrich.detected_tech } } : undefined,
+                website: {
+                  has_ssl: { value: flatEnrich.has_ssl },
+                  has_booking: { value: flatEnrich.has_booking },
+                  has_contact_form: { value: flatEnrich.has_contact_form },
+                  social_links: { value: flatEnrich.social_links },
+                },
+              },
+              rating: b.rating,
+              review_count: b.review_count,
+            };
+            
+            const outreach = await generateAutoOutreach(outreachInput);
+            await updateLeadOutreach(savedLeadId, JSON.stringify(outreach));
+            
+            leadResponse.outreach = outreach;
+          } catch (outreachErr) {
+            console.error(`Auto outreach failed for lead ${savedLeadId}:`, outreachErr);
+          }
+          // ── END AUTO OUTREACH ───────────────────────────
+        }
+      } catch (deeErr) {
+        console.error(`Auto deep-enrich failed for lead ${savedLeadId}:`, deeErr);
+        // Continue without deep enrichment - don't fail the whole scrape
+      }
+      // ── END AUTO DEEP ENRICHMENT ───────────────────────────
 
       finalLeads.push(leadResponse);
     }));

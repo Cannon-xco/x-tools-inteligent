@@ -1,16 +1,18 @@
+
 // ============================================================
 // DATABASE CLIENT — PostgreSQL via pg
 // Singleton pattern for Next.js server-side usage
 // ============================================================
 
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import type { DbLead } from '@/types';
+import { initDeeSchema } from '@/enrichment/db/dee-schema';
 
 let _pool: Pool | null = null;
 
 export function getPool(): Pool {
   if (!_pool) {
-    const connectionString = process.env.DATABASE_URL;
+    const connectionString = process.env.DATABASE_URL?.trim();
     
     if (!connectionString) {
       console.error('❌ DATABASE_URL is not defined! DB operations will fail.');
@@ -22,17 +24,24 @@ export function getPool(): Pool {
       max: 10,
       idleTimeoutMillis: 60000,
       connectionTimeoutMillis: 10000,
+      application_name: 'saas-local-business-lead',
     });
 
     _pool.on('error', (err) => {
-      console.error('💥 PostgreSQL Pool Error:', err.message);
+      console.error('💥 PostgreSQL Pool Error:', err?.message ?? String(err), err);
     });
 
     // Initialize schema on first pool creation
     if (connectionString) {
-      initSchema(_pool).catch(err => {
-        console.error('❌ Failed to initialize PostgreSQL schema:', err.message);
-      });
+      initSchema(_pool)
+        .then(() => initDeeSchema())
+        .catch(err => {
+          const detail =
+            err instanceof Error
+              ? `${err.message}\n${err.stack ?? ''}`
+              : JSON.stringify(err);
+          console.error('❌ Failed to initialize PostgreSQL schema:', detail);
+        });
     }
   }
   return _pool;
@@ -44,28 +53,42 @@ async function initSchema(pool: Pool): Promise<void> {
     await client.query('BEGIN');
     await client.query(`
       CREATE TABLE IF NOT EXISTS leads (
-        id              SERIAL PRIMARY KEY,
-        hash            TEXT UNIQUE NOT NULL,
-        place_id        TEXT,
-        name            TEXT NOT NULL,
-        address         TEXT NOT NULL DEFAULT '',
-        phone           TEXT,
-        maps_url        TEXT,
-        website         TEXT,
-        rating          REAL,
-        review_count    INTEGER,
-        score           INTEGER,
-        reasons         TEXT,
-        enrichment_json TEXT,
-        outreach_json   TEXT,
-        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        id                   SERIAL PRIMARY KEY,
+        hash                 TEXT UNIQUE NOT NULL,
+        place_id             TEXT,
+        name                 TEXT NOT NULL,
+        address              TEXT NOT NULL DEFAULT '',
+        phone                TEXT,
+        maps_url             TEXT,
+        website              TEXT,
+        rating               REAL,
+        review_count         INTEGER,
+        score                INTEGER,
+        reasons              TEXT,
+        enrichment_json      TEXT,
+        outreach_json        TEXT,
+        deep_enrichment_json TEXT,
+        verified_emails      TEXT,
+        verified_phones      TEXT,
+        verified_socials     TEXT,
+        confidence_scores    TEXT,
+        deep_enriched_at     TIMESTAMP,
+        created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      CREATE INDEX IF NOT EXISTS idx_leads_hash    ON leads(hash);
-      CREATE INDEX IF NOT EXISTS idx_leads_score   ON leads(score DESC);
-      CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_leads_name    ON leads(name);
+      ALTER TABLE leads ADD COLUMN IF NOT EXISTS deep_enrichment_json TEXT;
+      ALTER TABLE leads ADD COLUMN IF NOT EXISTS verified_emails TEXT;
+      ALTER TABLE leads ADD COLUMN IF NOT EXISTS verified_phones TEXT;
+      ALTER TABLE leads ADD COLUMN IF NOT EXISTS verified_socials TEXT;
+      ALTER TABLE leads ADD COLUMN IF NOT EXISTS confidence_scores TEXT;
+      ALTER TABLE leads ADD COLUMN IF NOT EXISTS deep_enriched_at TIMESTAMP;
+
+      CREATE INDEX IF NOT EXISTS idx_leads_hash          ON leads(hash);
+      CREATE INDEX IF NOT EXISTS idx_leads_score         ON leads(score DESC);
+      CREATE INDEX IF NOT EXISTS idx_leads_created       ON leads(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_leads_name          ON leads(name);
+      CREATE INDEX IF NOT EXISTS idx_leads_deep_enriched ON leads(deep_enriched_at DESC);
 
       CREATE TABLE IF NOT EXISTS logs (
         id         SERIAL PRIMARY KEY,
@@ -91,21 +114,38 @@ async function initSchema(pool: Pool): Promise<void> {
 export async function upsertLead(lead: Omit<DbLead, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
   const pool = getPool();
   const query = `
-    INSERT INTO leads (hash, place_id, name, address, phone, maps_url, website, rating, review_count, score, reasons, enrichment_json, outreach_json)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    INSERT INTO leads (
+      hash, place_id, name, address, phone, maps_url, website,
+      rating, review_count, score, reasons, enrichment_json, outreach_json,
+      deep_enrichment_json, verified_emails, verified_phones, verified_socials,
+      confidence_scores, deep_enriched_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
     ON CONFLICT (hash) DO UPDATE SET
-      score           = COALESCE(EXCLUDED.score, leads.score),
-      reasons         = COALESCE(EXCLUDED.reasons, leads.reasons),
-      enrichment_json = COALESCE(EXCLUDED.enrichment_json, leads.enrichment_json),
-      outreach_json   = COALESCE(EXCLUDED.outreach_json, leads.outreach_json),
-      updated_at      = CURRENT_TIMESTAMP
+      score                = COALESCE(EXCLUDED.score, leads.score),
+      reasons              = COALESCE(EXCLUDED.reasons, leads.reasons),
+      enrichment_json      = COALESCE(EXCLUDED.enrichment_json, leads.enrichment_json),
+      outreach_json        = COALESCE(EXCLUDED.outreach_json, leads.outreach_json),
+      deep_enrichment_json = COALESCE(EXCLUDED.deep_enrichment_json, leads.deep_enrichment_json),
+      verified_emails      = COALESCE(EXCLUDED.verified_emails, leads.verified_emails),
+      verified_phones      = COALESCE(EXCLUDED.verified_phones, leads.verified_phones),
+      verified_socials     = COALESCE(EXCLUDED.verified_socials, leads.verified_socials),
+      confidence_scores    = COALESCE(EXCLUDED.confidence_scores, leads.confidence_scores),
+      deep_enriched_at     = COALESCE(EXCLUDED.deep_enriched_at, leads.deep_enriched_at),
+      updated_at           = CURRENT_TIMESTAMP
     RETURNING id
   `;
   const values = [
-    lead.hash, lead.place_id, lead.name, lead.address, lead.phone, lead.maps_url, 
-    lead.website, lead.rating, lead.review_count, lead.score, 
+    lead.hash, lead.place_id, lead.name, lead.address, lead.phone, lead.maps_url,
+    lead.website, lead.rating, lead.review_count, lead.score,
     lead.reasons ? JSON.stringify(lead.reasons) : null,
-    lead.enrichment_json, lead.outreach_json
+    lead.enrichment_json, lead.outreach_json,
+    lead.deep_enrichment_json ?? null,
+    lead.verified_emails ?? null,
+    lead.verified_phones ?? null,
+    lead.verified_socials ?? null,
+    lead.confidence_scores ?? null,
+    lead.deep_enriched_at ?? null,
   ];
   const res = await pool.query(query, values);
   return res.rows[0].id;
@@ -113,10 +153,11 @@ export async function upsertLead(lead: Omit<DbLead, 'id' | 'created_at' | 'updat
 
 export async function getLeads(limit = 200, offset = 0): Promise<DbLead[]> {
   const pool = getPool();
-  const res = await pool.query(
-    'SELECT * FROM leads ORDER BY created_at DESC LIMIT $1 OFFSET $2',
-    [limit, offset]
-  );
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 500)) : 200;
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, offset) : 0;
+
+  const query = `SELECT * FROM leads ORDER BY created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+  const res = await pool.query(query);
   return res.rows as DbLead[];
 }
 
@@ -137,6 +178,13 @@ export async function updateLeadEnrichment(id: number, enrichmentJson: string): 
   await getPool().query(
     'UPDATE leads SET enrichment_json = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
     [enrichmentJson, id]
+  );
+}
+
+export async function updateLeadDeepEnrichment(id: number, deepEnrichmentJson: string): Promise<void> {
+  await getPool().query(
+    'UPDATE leads SET deep_enrichment_json = $1, deep_enriched_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+    [deepEnrichmentJson, id]
   );
 }
 

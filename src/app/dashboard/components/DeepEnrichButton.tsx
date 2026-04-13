@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { DeepEnrichResult } from '@/types/deep-enrich';
 
 /**
@@ -25,12 +25,12 @@ interface DeepEnrichButtonProps {
 /**
  * State visual button
  */
-type ButtonState = 'idle' | 'loading' | 'success' | 'error' | 'already_enriched';
+type ButtonState = 'idle' | 'loading' | 'polling' | 'success' | 'error' | 'limit_reached' | 'already_enriched';
 
 /**
  * Spinner loading animation component
  */
-function LoadingSpinner({ className = '' }: { className?: string }): JSX.Element {
+function LoadingSpinner({ className = '' }: { className?: string }) {
   return (
     <span
       className={`inline-block w-3 h-3 border border-current/30 border-t-current rounded-full animate-spin ${className}`}
@@ -59,40 +59,81 @@ export function DeepEnrichButton({
   leadName,
   isEnriched,
   onComplete,
-}: DeepEnrichButtonProps): JSX.Element {
+}: DeepEnrichButtonProps) {
   const [buttonState, setButtonState] = useState<ButtonState>(
     isEnriched ? 'already_enriched' : 'idle'
   );
+  const [progressLabel, setProgressLabel] = useState<string>('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isEnrichedRef = useRef(isEnriched);
+  isEnrichedRef.current = isEnriched;
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   /**
    * Reset button state ke idle setelah delay
    */
   const resetToIdle = useCallback((): void => {
     setTimeout(() => {
-      setButtonState(isEnriched ? 'already_enriched' : 'idle');
+      setButtonState(isEnrichedRef.current ? 'already_enriched' : 'idle');
     }, 3000);
-  }, [isEnriched]);
+  }, []);  // intentionally no deps — reads isEnrichedRef.current at call time
+
+  /**
+   * Poll /api/leads/[id]/enrich/status until not 'processing'.
+   */
+  const startPolling = useCallback((): void => {
+    setButtonState('polling');
+    setProgressLabel('Processing...');
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/leads/${leadId}/enrich/status`);
+        const json = await res.json();
+        const status: string = json?.data?.status ?? 'failed';
+
+        if (status === 'processing') {
+          setProgressLabel('Enriching...');
+          return;
+        }
+
+        if (pollRef.current) clearInterval(pollRef.current);
+
+        if (status === 'completed' && json?.data?.result) {
+          setButtonState('success');
+          onComplete(json.data.result);
+          resetToIdle();
+        } else if (status === 'limit_reached') {
+          setButtonState('limit_reached');
+          resetToIdle();
+        } else {
+          setButtonState('error');
+          resetToIdle();
+        }
+      } catch {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setButtonState('error');
+        resetToIdle();
+      }
+    }, 2000);
+  }, [leadId, onComplete, resetToIdle]);
 
   /**
    * Handle button click - trigger deep enrichment API call
    */
   const handleClick = useCallback(async (): Promise<void> => {
-    if (buttonState === 'loading') return;
+    if (buttonState === 'loading' || buttonState === 'polling') return;
 
     setButtonState('loading');
 
     try {
-      const response = await fetch('/api/deep-enrich', {
+      // Fire-and-forget POST to new RESTful endpoint
+      const response = await fetch(`/api/leads/${leadId}/enrich`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: leadId,
-          options: {
-            force: isEnriched, // Force re-enrich jika sudah pernah di-enrich
-          },
-        }),
       });
 
       const data = await response.json();
@@ -101,16 +142,21 @@ export function DeepEnrichButton({
         throw new Error(data.error || 'Deep enrichment failed');
       }
 
-      // Success state
-      setButtonState('success');
-      onComplete(data.data as DeepEnrichResult);
-      resetToIdle();
+      // If result returned immediately (fast pipeline)
+      if (data.data) {
+        setButtonState('success');
+        onComplete(data.data as DeepEnrichResult);
+        resetToIdle();
+      } else {
+        // Fall back to polling for real-time status
+        startPolling();
+      }
     } catch (err) {
       console.error(`Deep enrich failed for ${leadName}:`, err);
       setButtonState('error');
       resetToIdle();
     }
-  }, [buttonState, leadId, leadName, isEnriched, onComplete, resetToIdle]);
+  }, [buttonState, leadId, leadName, isEnriched, onComplete, resetToIdle, startPolling]);
 
   /**
    * Get button styling berdasarkan current state
@@ -120,6 +166,12 @@ export function DeepEnrichButton({
       'px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1.5';
 
     switch (buttonState) {
+      case 'polling':
+        return `${baseStyles} bg-violet-700 opacity-75 cursor-not-allowed text-white`;
+
+      case 'limit_reached':
+        return `${baseStyles} bg-orange-600 hover:bg-orange-500 text-white`;
+
       case 'loading':
         return `${baseStyles} bg-violet-800 opacity-50 cursor-not-allowed text-white`;
 
@@ -141,8 +193,24 @@ export function DeepEnrichButton({
   /**
    * Get button content berdasarkan current state
    */
-  const getButtonContent = (): JSX.Element => {
+  const getButtonContent = () => {
     switch (buttonState) {
+      case 'polling':
+        return (
+          <>
+            <LoadingSpinner />
+            <span>{progressLabel || 'Processing...'}</span>
+          </>
+        );
+
+      case 'limit_reached':
+        return (
+          <>
+            <span>⚠️</span>
+            <span>No Data Found</span>
+          </>
+        );
+
       case 'loading':
         return (
           <>
@@ -193,8 +261,12 @@ export function DeepEnrichButton({
     switch (buttonState) {
       case 'loading':
         return `Deep enriching ${leadName}...`;
+      case 'polling':
+        return `${progressLabel || 'Processing...'}`;
       case 'success':
         return 'Deep enrichment completed!';
+      case 'limit_reached':
+        return 'Enrichment reached limit — no data could be discovered for this lead.';
       case 'error':
         return 'Deep enrichment failed. Click to retry.';
       case 'already_enriched':
@@ -208,7 +280,7 @@ export function DeepEnrichButton({
   return (
     <button
       onClick={handleClick}
-      disabled={buttonState === 'loading'}
+      disabled={buttonState === 'loading' || buttonState === 'polling'}
       title={getButtonTitle()}
       className={getButtonStyles()}
       aria-label={getButtonTitle()}

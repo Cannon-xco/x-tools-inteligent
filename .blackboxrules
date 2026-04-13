@@ -1,0 +1,353 @@
+# ⚫ blackboxrules.md
+
+## 🎯 PURPOSE
+
+This document defines **strict engineering rules** for all AI agents and developers working on this repository.
+
+Goal:
+
+* Ensure **consistent, production-grade code**
+* Prevent **fragile, messy, or duplicated implementations**
+* Enforce **modular architecture and deterministic logic**
+
+This is NOT optional. All contributions MUST follow these rules.
+
+---
+
+# 🧠 GLOBAL PRINCIPLES
+
+## 1. SYSTEM FIRST, CODE SECOND
+
+Always understand:
+
+* What system you are building
+* Where your code fits in the architecture
+
+DO NOT write code without understanding:
+
+* Data flow
+* Dependencies
+* Existing modules
+
+---
+
+## 2. SINGLE RESPONSIBILITY PER MODULE
+
+Each file MUST do only ONE thing.
+
+✅ GOOD:
+
+* `scorer.ts` → only scoring logic
+* `serp.ts` → only SERP fetching
+
+❌ BAD:
+
+* One file doing scraping + scoring + DB
+
+---
+
+## 3. STRICT LAYERING (MANDATORY)
+
+You MUST follow this architecture:
+
+```id="lqj8j8"
+core/        → pure logic (no external calls)
+sources/     → external data fetching
+utils/       → helpers (pure)
+queue/       → background jobs
+api/         → HTTP layer only
+db/          → persistence only
+```
+
+❌ NEVER:
+
+* Call DB inside sources
+* Call external API inside core logic
+* Mix layers
+
+---
+
+## 4. DATA FLOW MUST BE EXPLICIT
+
+Every function must have:
+
+```ts id="xprwvb"
+input → transform → output
+```
+
+❌ NO hidden mutation
+❌ NO unclear data structure
+
+---
+
+## 5. TYPES ARE MANDATORY
+
+Use strict TypeScript types:
+
+```ts id="8khlje"
+interface EnrichedResult {
+  emails: string[]
+  phones: string[]
+  socials: Record<string, string>
+}
+```
+
+❌ DO NOT use `any`
+❌ DO NOT return inconsistent shapes
+
+---
+
+# ⚙️ ENGINEERING RULES
+
+## 6. PARALLELISM + TIMEOUTS
+
+All external calls MUST:
+
+* Use `Promise.all` where possible
+* Have timeout (max 15s)
+* Use AbortController
+
+---
+
+## 7. RETRY STRATEGY
+
+For unstable sources:
+
+* Max 3 retries
+* Exponential backoff
+
+---
+
+## 8. FAIL SAFE (NEVER CRASH PIPELINE)
+
+If one source fails:
+
+* Continue execution
+* Log error
+* Return partial result
+
+---
+
+## 9. IDEMPOTENCY
+
+All operations MUST be safe to re-run:
+
+* No duplicate inserts
+* Use UPSERT in DB
+
+---
+
+## 10. LOGGING
+
+Log ONLY meaningful data:
+
+✅:
+
+* errors
+* enrichment steps
+* failures
+
+❌:
+
+* spam logs
+* raw unnecessary dumps
+
+---
+
+# 🧩 ENRICHMENT-SPECIFIC RULES
+
+## 11. NO DIRECT TRUST IN DATA
+
+ALL extracted data MUST go through:
+
+* normalization
+* validation
+* scoring
+
+---
+
+## 12. CONFIDENCE FIRST
+
+Never store raw data directly.
+
+Every field MUST have:
+
+* value
+* confidence score
+
+---
+
+## 13. MULTI-SOURCE VALIDATION
+
+If possible:
+
+* Validate same data across multiple sources
+* Boost confidence if repeated
+
+---
+
+## 14. DEDUPLICATION REQUIRED
+
+Always:
+
+* remove duplicates
+* normalize before compare
+
+---
+
+# 🧪 CODE QUALITY RULES
+
+## 15. FUNCTION SIZE LIMIT
+
+* Max ~50 lines per function
+* Split if bigger
+
+---
+
+## 16. NAMING CONVENTION
+
+Use clear naming:
+
+✅:
+
+* `fetchSerpResults`
+* `normalizeEmails`
+* `scorePhone`
+
+❌:
+
+* `doStuff`
+* `handleData`
+
+---
+
+## 17. NO HARD CODING
+
+❌:
+
+* fixed domains
+* fixed values
+
+✅:
+
+* config-driven logic
+
+---
+
+## 18. PURE FUNCTIONS FIRST
+
+Prefer:
+
+```ts id="o9b4p3"
+function normalizeEmail(email: string): string
+```
+
+Avoid side effects.
+
+---
+
+# 💾 DATABASE RULES
+
+## 19. NO DIRECT WRITE WITHOUT VALIDATION
+
+Before saving:
+
+* data must be validated
+* confidence must be calculated
+
+---
+
+## 20. AUDIT LOG REQUIRED
+
+Every enrichment must log:
+
+```id="qhlq9b"
+field
+value
+source
+confidence
+timestamp
+```
+
+---
+
+# 🔌 API RULES
+
+## 21. API MUST BE THIN
+
+API should:
+
+* validate input
+* enqueue job
+* return response
+
+❌ DO NOT:
+
+* run heavy logic inside API
+
+---
+
+# ⚡ QUEUE RULES
+
+## 22. BACKGROUND PROCESSING ONLY
+
+Heavy tasks MUST run in:
+
+* worker (BullMQ)
+
+---
+
+## 23. JOB SAFETY
+
+Jobs must:
+
+* be retryable
+* be idempotent
+* not duplicate results
+
+---
+
+# 🚫 STRICTLY FORBIDDEN
+
+* ❌ Mixing layers
+* ❌ Skipping validation
+* ❌ Returning inconsistent data
+* ❌ Blocking operations without timeout
+* ❌ Writing monolithic code
+* ❌ Ignoring errors
+* ❌ Using `any`
+* ❌ Hardcoding logic
+
+---
+
+# ✅ REQUIRED OUTPUT STANDARD
+
+Every feature must include:
+
+1. Clear module structure
+2. Typed interfaces
+3. Clean function boundaries
+4. Error handling
+5. Scalable design
+
+---
+
+# 🧭 FINAL RULE
+
+You are NOT coding for today.
+
+You are building:
+
+> a scalable, production-grade system
+
+If code is:
+
+* hard to extend
+* hard to test
+* hard to debug
+
+Then it is WRONG.
+
+---
+
+# 🚀 END

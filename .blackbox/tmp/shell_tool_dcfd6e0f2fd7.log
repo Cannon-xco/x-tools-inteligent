@@ -1,0 +1,12 @@
+
+> saas-local-business-lead@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.24.64.1:3000
+- Environments: .env.local
+✓ Ready in 469ms
+- Experiments (use with caution):
+  · serverActions
+

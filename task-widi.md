@@ -1,321 +1,205 @@
-# Task Assignment: WIDI (Lead / Branch: `widi`)
+ # Task: WIDI — Redis/BullMQ + Levenshtein + Code Review
 
-## ⚙️ RULES — BACA SEBELUM MULAI
-
-1. **Gunakan Plan Mode** di Windsurf untuk setiap task
-2. **Pilih model: Kimi** sebagai AI assistant
-3. ⛔ **STRICT: JANGAN mengubah, menghapus, atau memodifikasi file/logic yang sudah ada.** Semua existing code di `src/lib/`, `src/app/`, `src/types/` adalah production code. **Hanya TAMBAHKAN file baru.** Jika perlu extend types, buat file baru (misal `src/types/dee.ts`), jangan edit `src/types/index.ts`.
-4. Semua file baru dibuat di dalam folder `src/enrichment/` (buat folder ini jika belum ada)
-5. Setiap function harus punya JSDoc comment
-6. Gunakan TypeScript strict mode
-7. Jangan install package baru tanpa konfirmasi tim
+**Branch:** `feat/queue-upgrade`
+**Estimasi:** 1–2 hari
+**Role:** Tech Lead — task paling kompleks, paralel dengan tim lain
 
 ---
 
-## 📋 OVERVIEW
+## 🎯 Tujuan
 
-Kamu bertanggung jawab atas **core engine** dari Deep Enrichment Engine (DEE):
-- Enhanced Website Adapter (HTML parsing, email/phone extraction)
-- SERP Adapter (search engine scraping)
-- Confidence Scoring Engine + Cross-Validation Engine
-- Queue System (Redis + BullMQ)
-
-Ini adalah bagian **paling teknikal dan krusial** dari sistem.
+1. Upgrade sistem queue dari in-memory ke Redis + BullMQ (production-ready)
+2. Implementasi Levenshtein fuzzy matching di confidence engine
+3. Code review semua PR dari tim
 
 ---
 
-## 🔥 TASK 1: Enhanced Website Adapter
+## ✅ TASK 1 — Redis + BullMQ Queue Upgrade
 
-### Goal
-Buat adapter website yang **jauh lebih powerful** dari yang ada sekarang. Fokus pada extraction email, phone, dan social dari HTML mentah.
+### Install packages
 
-### File yang harus dibuat
+```bash
+npm install bullmq ioredis
+npm install -D @types/ioredis
 ```
-src/enrichment/sources/website-adapter.ts
+
+### File yang dibuat
+
+```
+src/enrichment/queue/bullmq-queue.ts   ← implementasi baru
 ```
 
-### Yang harus diimplementasi
+### Interface yang harus diimplementasikan
 
-#### A. Advanced Email Extraction
-- Regex standard: `user@domain.com`
-- Obfuscated patterns:
-  - `info [at] domain [dot] com`
-  - `info(at)domain(dot)com`
-  - HTML entities: `&#64;` → `@`, `&#46;` → `.`
-  - URL encoded: `%40` → `@`
-  - JavaScript obfuscation: `document.write('user' + '@' + 'domain.com')`
-- `mailto:` link extraction
-- Filter false positives (image filenames, sentry DSNs, example.com, dll.)
-- Deduplicate dan lowercase
-
-#### B. Advanced Phone Extraction
-- International formats: `+62812345678`, `+1 (555) 123-4567`
-- Local formats: `(021) 555-1234`, `0812-3456-7890`
-- `tel:` link extraction
-- WhatsApp links: `wa.me/628123456`
-- Normalize ke international format (E.164 jika memungkinkan)
-
-#### C. Enhanced Social Extraction
-- Detect semua social platform dari `<a href>`:
-  - LinkedIn company page
-  - Instagram business profile
-  - Facebook page
-  - Twitter/X
-  - TikTok
-  - YouTube
-- Filter out individual posts (`/p/`, `/status/`, `/shorts/`, `/reel/`)
-- Return structured object: `{ linkedin?: string, instagram?: string, ... }`
-
-#### D. Decision-Maker Detection (Best Effort)
-- Scan untuk pattern "About Us", "Our Team", "Meet the Team"
-- Extract nama + title jika ditemukan di proximity (dalam `<div>` yang sama)
-- Contoh: `<h3>John Doe</h3><p>CEO & Founder</p>` → `{ name: "John Doe", title: "CEO & Founder" }`
-
-### Interface yang harus di-export
+Lihat `src/enrichment/queue/dee-queue.ts` — ada interface `IDeeQueue`. Buat class `BullMQQueue` yang implements interface tersebut:
 
 ```typescript
-export interface WebsiteAdapterResult {
-  emails: Array<{ value: string; source: string; confidence: number }>;
-  phones: Array<{ value: string; source: string; confidence: number }>;
-  socials: {
-    linkedin?: string;
-    instagram?: string;
-    facebook?: string;
-    twitter?: string;
-    tiktok?: string;
-    youtube?: string;
-  };
-  people: Array<{ name: string; title: string; confidence: number }>;
-  raw_html_length: number;
-  fetch_method: 'fetch' | 'playwright';
-  duration_ms: number;
+// src/enrichment/queue/bullmq-queue.ts
+import { Queue, Worker, QueueEvents } from 'bullmq';
+import type { IDeeQueue, EnrichJob } from './dee-queue';
+
+export class BullMQQueue implements IDeeQueue {
+  private queue: Queue;
+  private worker: Worker | null = null;
+
+  constructor(redisUrl: string) {
+    const connection = { url: redisUrl };
+    this.queue = new Queue('dee-enrichment', { connection });
+  }
+
+  async enqueue(job: EnrichJob): Promise<string> {
+    const bullJob = await this.queue.add('enrich', job, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
+    });
+    return bullJob.id ?? '';
+  }
+
+  async startWorker(processor: (job: EnrichJob) => Promise<void>): Promise<void> {
+    this.worker = new Worker(
+      'dee-enrichment',
+      async (job) => processor(job.data as EnrichJob),
+      { connection: { url: process.env.REDIS_URL } }
+    );
+  }
+
+  async getStatus(jobId: string): Promise<'pending' | 'processing' | 'completed' | 'failed'> {
+    const job = await this.queue.getJob(jobId);
+    if (!job) return 'failed';
+    const state = await job.getState();
+    if (state === 'completed') return 'completed';
+    if (state === 'failed') return 'failed';
+    if (state === 'active') return 'processing';
+    return 'pending';
+  }
 }
-
-export async function extractFromWebsite(url: string, html?: string): Promise<WebsiteAdapterResult>
 ```
 
-### Dependency
-- Gunakan `cheerio` untuk HTML parsing (sudah ada di project)
-- Boleh reuse logic fetching dari `src/lib/enrich/website.ts` sebagai **referensi**, tapi buat implementasi sendiri di file baru
+### Factory function
 
-### Test
-Buat file `src/enrichment/__tests__/website-adapter.test.ts` dengan minimal 5 test cases.
-
----
-
-## 🔥 TASK 2: SERP Adapter
-
-### Goal
-Buat adapter untuk scraping hasil search engine (Yahoo/DuckDuckGo) dan extract informasi bisnis.
-
-### File yang harus dibuat
-```
-src/enrichment/sources/serp-adapter.ts
-```
-
-### Yang harus diimplementasi
-
-#### A. Yahoo Search Scraping
-- Fetch `https://search.yahoo.com/search?p={query}`
-- Parse HTML results menggunakan Cheerio
-- Extract URLs dari Yahoo redirect structure (`/RU=...`)
-- Kategorikan hasil:
-  - Official website
-  - Social media profiles
-  - Directory listings (YellowPages, Yelp, dll.)
-
-#### B. DuckDuckGo Lite Scraping
-- Fetch `https://lite.duckduckgo.com/lite/?q={query}`
-- Parse HTML results (lebih simple dari Yahoo)
-- Extract URLs dan snippets
-
-#### C. Result Merging
-- Gabungkan hasil dari kedua search engine
-- Deduplicate URLs
-- Prioritaskan: official website > social > directory
-
-### Interface yang harus di-export
+Di `src/enrichment/queue/dee-queue.ts`, tambahkan factory yang memilih queue berdasarkan env:
 
 ```typescript
-export interface SerpResult {
-  officialWebsite?: string;
-  socialProfiles: string[];
-  directoryListings: string[];
-  snippets: Array<{ text: string; url: string; source: 'yahoo' | 'duckduckgo' }>;
-  duration_ms: number;
+export function createQueue(): IDeeQueue {
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    const { BullMQQueue } = require('./bullmq-queue');
+    return new BullMQQueue(redisUrl);
+  }
+  // Fallback ke in-memory (untuk development tanpa Redis)
+  return new InMemoryQueue();
 }
-
-export async function searchBusiness(
-  businessName: string,
-  location: string,
-  queries?: string[]
-): Promise<SerpResult>
 ```
-
-### Filter Domains
-Reuse konsep dari `src/lib/enrich/search-engine.ts` — filter domain directory:
-- tripadvisor.com, yelp.com, agoda.com, booking.com, yellowpages.com, dll.
-
-### Error Handling
-- Timeout 15 detik per request (AbortController)
-- Jika Yahoo gagal, fallback ke DuckDuckGo
-- Jika keduanya gagal, return empty result (jangan throw)
-
-### Test
-Buat file `src/enrichment/__tests__/serp-adapter.test.ts`
 
 ---
 
-## 🔥 TASK 3: Confidence Scoring + Cross-Validation + Queue System
+## ✅ TASK 2 — Levenshtein Fuzzy Matching di Confidence Engine
 
-### Goal
-Buat engine yang menilai kepercayaan data dari multiple sources, dan queue system untuk background processing.
+### File yang diubah
 
-### Files yang harus dibuat
 ```
 src/enrichment/scoring/confidence-engine.ts
-src/enrichment/scoring/cross-validator.ts
-src/enrichment/queue/dee-queue.ts
-src/enrichment/queue/dee-worker.ts
-src/enrichment/types.ts
 ```
 
-### A. Confidence Scoring Engine (`confidence-engine.ts`)
+### Yang harus diimplementasikan
 
-Formula:
-```
-confidence = (sourceReliability × 0.4) + (fieldMatch × 0.3) + (freshness × 0.2) + (crossValidation × 0.1)
-```
-
-Source Reliability Weights:
-| Source | Weight |
-|--------|--------|
-| Official website | 0.9 |
-| Directory (YellowPages, Yelp) | 0.7 |
-| SERP snippet | 0.5 |
-| Raw scrape | 0.4 |
-
-Thresholds:
-| Score | Action |
-|-------|--------|
-| ≥ 0.75 | Auto commit (verified) |
-| 0.50 – 0.74 | Mark LOW_CONFIDENCE |
-| < 0.50 | Discard |
+Ganti fungsi similarity yang ada (word count-based) dengan Levenshtein distance:
 
 ```typescript
-export interface ConfidenceResult {
-  value: string;
-  field: 'email' | 'phone' | 'social' | 'person';
-  confidence: number;
-  status: 'VERIFIED' | 'LOW_CONFIDENCE' | 'DISCARDED';
-  sources: Array<{ name: string; reliability: number }>;
+/**
+ * Hitung Levenshtein distance antara dua string.
+ * Digunakan untuk fuzzy matching nama bisnis.
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
 }
 
-export function calculateConfidence(
-  field: string,
-  value: string,
-  sources: Array<{ name: string; reliability: number; timestamp: Date }>,
-  crossValidationScore: number
-): ConfidenceResult
-```
-
-### B. Cross-Validation Engine (`cross-validator.ts`)
-
-Compare data across multiple sources:
-- Same email dari 2+ sources → boost +0.2
-- Email domain matches business website domain → boost +0.15
-- Phone appears in website AND directory → boost +0.2
-- Name + city match across sources → boost +0.1
-
-```typescript
-export interface CrossValidationResult {
-  field: string;
-  value: string;
-  matchCount: number;
-  matchingSources: string[];
-  boostScore: number;
-}
-
-export function validateAcrossSources(
-  field: string,
-  entries: Array<{ value: string; source: string }>
-): CrossValidationResult
-```
-
-### C. Queue System (`dee-queue.ts` + `dee-worker.ts`)
-
-Setup menggunakan **BullMQ + Redis** (atau fallback ke in-memory queue jika Redis tidak tersedia):
-
-```typescript
-// dee-queue.ts
-export async function addDeepEnrichJob(leadId: number, data: DeepEnrichInput): Promise<string>
-export async function getJobStatus(jobId: string): Promise<JobStatus>
-
-// dee-worker.ts
-// Worker yang process jobs: run semua adapters → normalize → validate → score → save
-```
-
-Flow:
-```
-addDeepEnrichJob() → Queue → Worker picks up → Run pipeline → Save to DB → Emit event
-```
-
-**PENTING:** Jika Redis tidak available (local dev), buat fallback **in-memory queue** yang tetap bisa jalan. Jangan hard-depend ke Redis.
-
-### D. Shared Types (`types.ts`)
-
-```typescript
-export interface DeepEnrichInput {
-  leadId: number;
-  name: string;
-  address: string;
-  domain?: string;
-  phone?: string;
-  niche?: string;
-}
-
-export interface DeepEnrichResult {
-  leadId: number;
-  emails: ConfidenceResult[];
-  phones: ConfidenceResult[];
-  socials: { linkedin?: string; instagram?: string; facebook?: string };
-  people: Array<{ name: string; title: string; confidence: number }>;
-  overallConfidence: number;
-  sources_used: string[];
-  duration_ms: number;
-  enriched_at: string;
+/**
+ * Hitung similarity score 0-1 menggunakan Levenshtein.
+ * 1.0 = identik, 0.0 = sama sekali berbeda.
+ */
+export function stringSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const normA = a.toLowerCase().trim();
+  const normB = b.toLowerCase().trim();
+  if (normA === normB) return 1;
+  const maxLen = Math.max(normA.length, normB.length);
+  if (maxLen === 0) return 1;
+  const dist = levenshteinDistance(normA, normB);
+  return 1 - dist / maxLen;
 }
 ```
 
-### Test
-Buat file `src/enrichment/__tests__/confidence-engine.test.ts`
+Gunakan `stringSimilarity` di tempat yang sebelumnya menggunakan word count similarity untuk cross-validation nama bisnis.
 
 ---
 
-## 📦 DEPENDENCY ORDER
+## ✅ TASK 3 — Code Review Semua PR Tim
 
-```
-Task 1 (Website Adapter) → bisa mulai langsung
-Task 2 (SERP Adapter) → bisa mulai langsung (parallel dengan Task 1)
-Task 3 (Scoring + Queue) → mulai setelah Task 1 & 2 selesai, karena butuh test data dari adapters
-```
+Setelah masing-masing anggota submit PR:
 
-## 📁 FINAL STRUCTURE
+**Checklist per PR:**
+- [ ] `npx tsc --noEmit` → 0 errors (jalankan lokal)
+- [ ] Tidak ada hardcoded API key atau secret
+- [ ] Tidak ada `console.log` yang tertinggal di production code
+- [ ] Function punya JSDoc comment
+- [ ] Logic sudah sesuai dengan task yang diberikan
+- [ ] Tidak ada breaking change ke existing code
 
-```
-src/enrichment/
-├── sources/
-│   ├── website-adapter.ts    ← Task 1
-│   └── serp-adapter.ts       ← Task 2
-├── scoring/
-│   ├── confidence-engine.ts  ← Task 3
-│   └── cross-validator.ts    ← Task 3
-├── queue/
-│   ├── dee-queue.ts          ← Task 3
-│   └── dee-worker.ts         ← Task 3
-├── types.ts                  ← Task 3
-└── __tests__/
-    ├── website-adapter.test.ts
-    ├── serp-adapter.test.ts
-    └── confidence-engine.test.ts
+**PR yang harus di-review:**
+- [ ] `feat/email-setup` (Yastika) — env + package install
+- [ ] `feat/email-send-api` (Dekres) — API route
+- [ ] `feat/send-email-button` (Prayoga) — component
+- [ ] `feat/dashboard-email-ui` (Qiuqiu) — dashboard integration
+
+---
+
+## ✅ TASK 4 — Integration Testing Setelah Semua PR Merge
+
+Setelah semua PR di-merge ke `main`:
+
+1. Pull latest `main`
+2. Jalankan `npm install` (untuk package baru dari Yastika)
+3. Set `.env.local` dengan `RESEND_API_KEY` valid
+4. Jalankan `npx tsc --noEmit` → harus 0 errors
+5. Test end-to-end:
+   - Search lead → generate outreach → klik "Send Email" → isi email → kirim
+   - Cek inbox Resend dashboard: [resend.com/emails](https://resend.com/emails)
+   - Cek badge "📨 Sent" muncul di lead row
+   - Cek stats card "Sent" berubah
+
+---
+
+## 📋 Checklist Selesai
+
+- [ ] `BullMQQueue` class sudah dibuat dan bisa di-swap dengan `InMemoryQueue`
+- [ ] `levenshteinDistance` + `stringSimilarity` sudah ada di confidence engine
+- [ ] `createQueue()` factory sudah bisa memilih berdasarkan `REDIS_URL` env
+- [ ] Semua 4 PR dari tim sudah di-review dan diapprove
+- [ ] Integration test end-to-end berhasil
+
+---
+
+## 🚀 Cara Submit
+
+```bash
+git checkout -b feat/queue-upgrade
+git add src/enrichment/queue/bullmq-queue.ts src/enrichment/queue/dee-queue.ts src/enrichment/scoring/confidence-engine.ts
+git commit -m "feat(queue): add BullMQ adapter + Levenshtein similarity for confidence engine"
+git push origin feat/queue-upgrade
 ```

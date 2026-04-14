@@ -18,9 +18,10 @@ export function getPool(): Pool {
       console.error('❌ DATABASE_URL is not defined! DB operations will fail.');
     }
 
+    const isRemote = connectionString && !connectionString.includes('localhost') && !connectionString.includes('127.0.0.1');
     _pool = new Pool({
       connectionString,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: isRemote ? { rejectUnauthorized: false } : false,
       max: 10,
       idleTimeoutMillis: 60000,
       connectionTimeoutMillis: 10000,

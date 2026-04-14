@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // We no longer need better-sqlite3
   serverExternalPackages: ['playwright', 'playwright-core', 'pg'],
+  allowedDevOrigins: ['127.0.0.1'],
   experimental: {
     serverActions: {
       allowedOrigins: ['localhost:3000', ...extraOrigins],

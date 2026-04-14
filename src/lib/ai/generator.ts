@@ -26,28 +26,30 @@ function buildPrompt(req: OutreachRequest): string {
     ? `Current Google rating: ${req.rating}/5 (${req.review_count ?? '?'} reviews).`
     : '';
 
-  return `You are a professional digital marketing consultant writing a cold outreach email to a local business.
+  return `Anda adalah konsultan pemasaran digital B2B yang berpengalaman, menulis email cold outreach kepada pemilik bisnis lokal di Indonesia.
 
-Business: ${req.business_name}
-Industry: ${req.niche}
-Location: ${req.location ?? 'local area'}
+Bisnis: ${req.business_name}
+Industri: ${req.niche}
+Lokasi: ${req.location ?? 'area lokal'}
 ${ratingNote}
 
-Identified opportunities for improvement:
+Peluang yang teridentifikasi:
 ${issueList}
 
-Write a SHORT, HELPFUL outreach email with subject line and body.
-Requirements:
-- Maximum 120 words total
-- Professional but friendly tone
-- Value-focused (what they gain, not what they lack)
-- Mention 1-2 specific improvements from the list above
-- No fake promises or price mentions
-- End with a soft call to action (reply to chat, free audit, etc.)
+Tulis email outreach profesional DALAM BAHASA INDONESIA yang singkat dan berdampak.
+Persyaratan:
+- Tepat 3 paragraf, tanpa poin-poin bullet
+- Paragraf 1: Perkenalan singkat + 1 observasi spesifik tentang bisnis mereka
+- Paragraf 2: 1 solusi konkret yang bisa Anda bantu + manfaat bisnis yang jelas (lebih banyak pelanggan, lebih banyak pendapatan)
+- Paragraf 3: CTA ringan — ajak meeting 15 menit atau chat WhatsApp minggu ini
+- Tone profesional namun hangat (setara sesama profesional, bukan konsultan ke klien)
+- JANGAN gunakan frasa generik seperti "audit gratis", "5 menit audit", atau "quick chat"
+- Subject: spesifik untuk bisnis mereka, maksimal 8 kata, tanpa emoji
+- Akhiri dengan: "Salam, [Nama] | Digital Marketing Consultant"
 
-Format your response EXACTLY as:
-SUBJECT: [subject line here]
-BODY: [email body here]`;
+Format EXACTLY:
+SUBJECT: [subject di sini]
+BODY: [3 paragraf di sini]`;
 }
 
 // ── OpenRouter API call ───────────────────────────────────────
@@ -103,32 +105,22 @@ function parseAiResponse(content: string): { subject: string; body: string } {
 // ── Template fallback ─────────────────────────────────────────
 
 function generateTemplate(req: OutreachRequest): { subject: string; body: string } {
-  const topIssue = req.reasons[0] ?? 'digital presence improvements';
+  const topIssue = req.reasons[0] ?? 'peningkatan kehadiran digital';
   const secondIssue = req.reasons[1];
 
-  const subject = `Quick tip for ${req.business_name} — grow your ${req.niche} business`;
+  const subject = `Ide pertumbuhan untuk ${req.business_name}`;
 
   const bodyParts = [
-    `Hi ${req.business_name} team,`,
+    `Halo Tim ${req.business_name},`,
     '',
-    `I came across your ${req.niche} business and noticed an opportunity that could help you attract more clients.`,
+    `Saya melihat bisnis ${req.niche} Anda di ${req.location ?? 'area lokal'} dan memperhatikan beberapa hal menarik tentang cara Anda beroperasi secara online.`,
+    '',
+    `Secara spesifik, ${topIssue.toLowerCase()} adalah area yang bisa memberikan dampak signifikan bagi pertumbuhan pelanggan Anda.${secondIssue ? ` Selain itu, ${secondIssue.toLowerCase()} juga bisa dioptimalkan untuk hasil yang lebih baik.` : ''}`,
+    '',
+    `Saya ingin berbagi beberapa insight yang relevan untuk bisnis Anda. Apakah Anda terbuka untuk diskusi singkat 15 menit minggu ini?`,
+    '',
+    'Salam,\n[Nama] | Digital Marketing Consultant',
   ];
-
-  if (topIssue) {
-    bodyParts.push('', `Specifically: ${topIssue.toLowerCase()}.`);
-  }
-  if (secondIssue) {
-    bodyParts.push(`Also: ${secondIssue.toLowerCase()}.`);
-  }
-
-  bodyParts.push(
-    '',
-    'These are quick wins that could meaningfully improve your online visibility and bookings.',
-    '',
-    'I\'d love to share a free 5-minute audit with you. Would you be open to a quick chat?',
-    '',
-    'Best regards'
-  );
 
   return { subject, body: bodyParts.join('\n') };
 }
@@ -200,28 +192,28 @@ function buildHumanPrompt(req: AutoOutreachInput): string {
     ? insights.map(i => `- ${i}`).join('\n')
     : '- No specific tech or social data found';
 
-  return `You are a friendly local business consultant writing to ${req.businessName} in ${req.location}.
+  return `Anda adalah konsultan bisnis lokal yang menulis kepada ${req.businessName} di ${req.location}.
 
-CONTEXT:
-- Industry: ${req.niche}
-- Google Rating: ${req.rating ?? 'N/A'}/5 (${req.review_count ?? 0} reviews)
-- Data Confidence: ${(confidence * 100).toFixed(0)}%
+KONTEKS:
+- Industri: ${req.niche}
+- Rating Google: ${req.rating ?? 'N/A'}/5 (${req.review_count ?? 0} ulasan)
 
-DISCOVERED INSIGHTS:
+INSIGHT YANG DITEMUKAN:
 ${insightsText}
 
-IMPORTANT RULES:
-1. Reference 1-2 specific things you noticed from the insights above
-2. Be genuinely helpful, NOT salesy
-3. Keep it SHORT - under 100 words total
-4. Use casual-professional tone (like a helpful peer, not a consultant)
-5. End naturally - no "Best regards" (use "Salam" or just your name)
-6. NEVER use bullet points or numbered lists
-7. Make 1 specific, actionable suggestion
+ATURAN PENTING:
+1. Referensikan 1-2 hal spesifik yang Anda temukan dari insight di atas
+2. Tulis dalam BAHASA INDONESIA yang natural dan profesional
+3. Singkat — maksimal 3 paragraf pendek
+4. Tone hangat dan setara (seperti rekan profesional, bukan konsultan ke klien)
+5. Akhiri dengan tanda tangan: "Salam,\n[Nama] | Digital Marketing Consultant"
+6. JANGAN gunakan poin-poin bullet atau daftar bernomor
+7. JANGAN sebutkan persentase atau angka teknis
+8. Berikan 1 saran spesifik yang actionable
 
-Format EXACTLY as:
-SUBJECT: [catchy but relevant subject line]
-BODY: [1-2 short paragraphs, no lists]`;
+Format EXACTLY:
+SUBJECT: [subject yang relevan dan spesifik, tanpa emoji]
+BODY: [2-3 paragraf pendek, tanpa daftar]`;
 }
 
 // ── Main Auto Outreach Export ───────────────────────────

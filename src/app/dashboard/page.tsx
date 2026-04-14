@@ -6,6 +6,7 @@ import type { DeepEnrichResult } from '@/types/deep-enrich';
 import { DeepEnrichButton } from './components/DeepEnrichButton';
 import { DeepEnrichPanel } from './components/DeepEnrichPanel';
 import { SendEmailButton } from './components/SendEmailButton';
+import { EmailDrawer } from './components/EmailDrawer';
 
 interface ScrapedLeadResponse {
   name: string;
@@ -127,11 +128,11 @@ function StatCard({
 
 // ── Outreach Modal ────────────────────────────────────────────
 
-function OutreachModal({ lead, outreach, onClose, onSent }: {
+function OutreachModal({ lead, outreach, onClose, onOpenEmailDrawer }: {
   lead: BusinessListing;
   outreach: OutreachDraft;
   onClose: () => void;
-  onSent?: (sentAt: string) => void;
+  onOpenEmailDrawer: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -194,18 +195,8 @@ function OutreachModal({ lead, outreach, onClose, onSent }: {
 
           {lead.id && (
             <SendEmailButton
-              leadId={lead.id}
-              subject={outreach.subject}
-              body={outreach.body}
-              defaultTo={
-                lead.deepEnrichment?.emails?.[0]?.value ??
-                lead.enrichment?.website?.emails?.value?.[0] ??
-                ''
-              }
-              onSent={(sentAt) => {
-                onSent?.(sentAt);
-                onClose();
-              }}
+              onOpenDrawer={onOpenEmailDrawer}
+              hasSent={!!lead.sent_at}
             />
           )}
         </div>
@@ -486,6 +477,8 @@ export default function DashboardPage() {
   const [deepEnrichingIds, setDeepEnrichingIds] = useState<Set<number>>(new Set());
   const [selectedLead, setSelectedLead] = useState<BusinessListing | null>(null);
   const [selectedOutreach, setSelectedOutreach] = useState<{ lead: BusinessListing; outreach: OutreachDraft } | null>(null);
+  const [emailDrawerOpen, setEmailDrawerOpen] = useState(false);
+  const [emailDrawerLead, setEmailDrawerLead] = useState<BusinessListing | null>(null);
   const [niche, setNiche] = useState('');
   const [sortField, setSortField] = useState<'score' | 'rating' | 'created_at'>('score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -1193,13 +1186,36 @@ export default function DashboardPage() {
           lead={selectedOutreach.lead}
           outreach={selectedOutreach.outreach}
           onClose={() => setSelectedOutreach(null)}
+          onOpenEmailDrawer={() => {
+            setEmailDrawerLead(selectedOutreach.lead);
+            setEmailDrawerOpen(true);
+          }}
+        />
+      )}
+
+      {/* ── EMAIL DRAWER ── */}
+      {emailDrawerLead && emailDrawerLead.outreach && (
+        <EmailDrawer
+          open={emailDrawerOpen}
+          onClose={() => {
+            setEmailDrawerOpen(false);
+            setEmailDrawerLead(null);
+          }}
+          leadId={emailDrawerLead.id!}
+          leadName={emailDrawerLead.name}
+          subject={emailDrawerLead.outreach.subject}
+          body={emailDrawerLead.outreach.body}
+          defaultTo={
+            emailDrawerLead.deepEnrichment?.emails?.[0]?.value ??
+            emailDrawerLead.enrichment?.website?.emails?.value?.[0] ??
+            ''
+          }
           onSent={(sentAt) => {
             setLeads((prev) =>
               prev.map((l) =>
-                l.id === selectedOutreach.lead.id ? { ...l, sent_at: sentAt } : l
+                l.id === emailDrawerLead.id ? { ...l, sent_at: sentAt } : l
               )
             );
-            setSelectedOutreach(null);
           }}
         />
       )}

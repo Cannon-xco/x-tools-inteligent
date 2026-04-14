@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getLeads, getLeadsCount, deleteLeadById, insertLog } from '@/lib/db/client';
+import { getSessionUserId } from '@/lib/auth/session';
 import type { ApiResponse, BusinessListing, EnrichmentData, OutreachDraft } from '@/types';
 
 export const runtime = 'nodejs';
@@ -14,9 +15,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '200'), 500);
     const offset = parseInt(searchParams.get('offset') ?? '0');
+    const userId = await getSessionUserId();
 
-    const rows = await getLeads(limit, offset);
-    const total = await getLeadsCount();
+    const rows = await getLeads(limit, offset, userId ?? undefined);
+    const total = await getLeadsCount(userId ?? undefined);
 
     const leads: BusinessListing[] = rows.map((row) => ({
       id: row.id,
@@ -58,7 +60,8 @@ export async function DELETE(req: NextRequest) {
 
     if (all) {
       const { deleteAllLeads } = await import('@/lib/db/client');
-      await deleteAllLeads();
+      const userId = await getSessionUserId();
+      await deleteAllLeads(userId ?? undefined);
       await insertLog('info', '🗑 DELETED ALL LEADS FROM DATABASE');
       return NextResponse.json<ApiResponse>({ success: true, message: 'All leads deleted' });
     }

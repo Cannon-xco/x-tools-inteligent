@@ -85,7 +85,9 @@ async function initSchema(pool: Pool): Promise<void> {
       ALTER TABLE leads ADD COLUMN IF NOT EXISTS confidence_scores TEXT;
       ALTER TABLE leads ADD COLUMN IF NOT EXISTS deep_enriched_at TIMESTAMP;
       ALTER TABLE leads ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;
+      ALTER TABLE leads ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
 
+      CREATE INDEX IF NOT EXISTS idx_leads_user_id ON leads(user_id);
       CREATE INDEX IF NOT EXISTS idx_leads_hash          ON leads(hash);
       CREATE INDEX IF NOT EXISTS idx_leads_score         ON leads(score DESC);
       CREATE INDEX IF NOT EXISTS idx_leads_created       ON leads(created_at DESC);
@@ -129,16 +131,19 @@ async function initSchema(pool: Pool): Promise<void> {
 
 // ── CRUD helpers ─────────────────────────────────────────────
 
-export async function upsertLead(lead: Omit<DbLead, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+export async function upsertLead(
+  lead: Omit<DbLead, 'id' | 'created_at' | 'updated_at' | 'user_id'>,
+  userId?: number,
+): Promise<number> {
   const pool = getPool();
   const query = `
     INSERT INTO leads (
       hash, place_id, name, address, phone, maps_url, website,
       rating, review_count, score, reasons, enrichment_json, outreach_json,
       deep_enrichment_json, verified_emails, verified_phones, verified_socials,
-      confidence_scores, deep_enriched_at
+      confidence_scores, deep_enriched_at, user_id
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
     ON CONFLICT (hash) DO UPDATE SET
       score                = COALESCE(EXCLUDED.score, leads.score),
       reasons              = COALESCE(EXCLUDED.reasons, leads.reasons),
@@ -150,6 +155,7 @@ export async function upsertLead(lead: Omit<DbLead, 'id' | 'created_at' | 'updat
       verified_socials     = COALESCE(EXCLUDED.verified_socials, leads.verified_socials),
       confidence_scores    = COALESCE(EXCLUDED.confidence_scores, leads.confidence_scores),
       deep_enriched_at     = COALESCE(EXCLUDED.deep_enriched_at, leads.deep_enriched_at),
+      user_id              = COALESCE(leads.user_id, EXCLUDED.user_id),
       updated_at           = CURRENT_TIMESTAMP
     RETURNING id
   `;
@@ -164,17 +170,20 @@ export async function upsertLead(lead: Omit<DbLead, 'id' | 'created_at' | 'updat
     lead.verified_socials ?? null,
     lead.confidence_scores ?? null,
     lead.deep_enriched_at ?? null,
+    userId ?? null,
   ];
   const res = await pool.query(query, values);
   return res.rows[0].id;
 }
 
-export async function getLeads(limit = 200, offset = 0): Promise<DbLead[]> {
+export async function getLeads(limit = 200, offset = 0, userId?: number): Promise<DbLead[]> {
   const pool = getPool();
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 500)) : 200;
   const safeOffset = Number.isFinite(offset) ? Math.max(0, offset) : 0;
 
-  const query = `SELECT * FROM leads ORDER BY created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+  const query = userId != null
+    ? `SELECT * FROM leads WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`
+    : `SELECT * FROM leads WHERE user_id IS NULL ORDER BY created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
   const res = await pool.query(query);
   return res.rows as DbLead[];
 }
@@ -229,12 +238,18 @@ export async function deleteLeadById(id: number): Promise<void> {
   await getPool().query('DELETE FROM leads WHERE id = $1', [id]);
 }
 
-export async function deleteAllLeads(): Promise<void> {
-  await getPool().query('DELETE FROM leads');
+export async function deleteAllLeads(userId?: number): Promise<void> {
+  if (userId != null) {
+    await getPool().query('DELETE FROM leads WHERE user_id = $1', [userId]);
+  } else {
+    await getPool().query('DELETE FROM leads WHERE user_id IS NULL');
+  }
 }
 
-export async function getLeadsCount(): Promise<number> {
-  const res = await getPool().query('SELECT COUNT(*) as count FROM leads');
+export async function getLeadsCount(userId?: number): Promise<number> {
+  const res = userId != null
+    ? await getPool().query('SELECT COUNT(*) as count FROM leads WHERE user_id = $1', [userId])
+    : await getPool().query('SELECT COUNT(*) as count FROM leads WHERE user_id IS NULL');
   return parseInt(res.rows[0].count);
 }
 

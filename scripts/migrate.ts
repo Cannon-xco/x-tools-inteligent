@@ -25,9 +25,9 @@ async function migrate() {
   try {
     console.log('🔄 Running migrations...');
 
-    await client.query(`
-      ALTER TABLE leads ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;
-    `);
+    await client.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leads_user_id ON leads(user_id);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { scrapeGoogleMaps } from '@/lib/maps/scraper';
 import { enrichWebsite, flattenEnrichment } from '@/lib/enrich/website';
 import { upsertLead, insertLog, updateLeadDeepEnrichment } from '@/lib/db/client';
+import { getSessionUserId } from '@/lib/auth/session';
 import { discoverBusinessLinks } from '@/lib/enrich/search-engine';
 import { createHash } from 'crypto';
 import pLimit from 'p-limit'; // Fast concurrency tracking
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as { keyword?: string; location?: string; limit?: number };
     const { keyword, location, limit = 10 } = body;
+    const userId = await getSessionUserId();
 
     if (!keyword?.trim() || !location?.trim()) {
       return NextResponse.json({ success: false, error: 'keyword and location are required' }, { status: 400 });
@@ -151,7 +153,7 @@ export async function POST(req: NextRequest) {
         confidence_scores: null,
         deep_enriched_at: null,
         sent_at: null,
-      });
+      }, userId ?? undefined);
 
       // ── AUTO DEEP ENRICHMENT ────────────────────────────────
       // Run deep-enrichment automatically after lead is saved

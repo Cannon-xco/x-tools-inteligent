@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getLeadById, updateLeadSentAt, insertLog } from '@/lib/db/client';
+import { getSessionUserId } from '@/lib/auth/session';
 import type { ApiResponse } from '@/types';
 
 export const runtime = 'nodejs';
@@ -48,12 +49,21 @@ export async function POST(
     );
   }
 
-  // Verify lead exists
-  const lead = await getLeadById(id).catch(() => null);
+  // Verify lead exists and belongs to current user
+  const [lead, userId] = await Promise.all([
+    getLeadById(id).catch(() => null),
+    getSessionUserId(),
+  ]);
   if (!lead) {
     return NextResponse.json<ApiResponse>(
       { success: false, error: `Lead ${id} not found` },
       { status: 404 },
+    );
+  }
+  if (userId != null && lead.user_id != null && lead.user_id !== userId) {
+    return NextResponse.json<ApiResponse>(
+      { success: false, error: 'Forbidden' },
+      { status: 403 },
     );
   }
 

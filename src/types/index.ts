@@ -212,6 +212,7 @@ export interface DbLead {
   confidence_scores: string | null; // JSON
   deep_enriched_at: string | null;
   sent_at: string | null;
+  user_id: number | null;
   created_at: string;
   updated_at: string;
 }

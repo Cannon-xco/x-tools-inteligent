@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getLeads, insertLog } from '@/lib/db/client';
+import { getSessionUserId } from '@/lib/auth/session';
 import type { EnrichmentData, OutreachDraft } from '@/types';
 
 export const runtime = 'nodejs';
@@ -26,8 +27,9 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '10000'), 10000);
+    const userId = await getSessionUserId();
 
-    const rows = await getLeads(limit, 0);
+    const rows = await getLeads(limit, 0, userId ?? undefined);
 
       const headers = [
       'ID', 'Name', 'Address', 'Phone', 'Maps URL', 'Website',

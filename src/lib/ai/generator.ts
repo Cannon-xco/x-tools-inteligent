@@ -26,28 +26,30 @@ function buildPrompt(req: OutreachRequest): string {
     ? `Current Google rating: ${req.rating}/5 (${req.review_count ?? '?'} reviews).`
     : '';
 
-  return `You are a professional digital marketing consultant writing a cold outreach email to a local business.
+  return `You are a professional B2B sales consultant writing a cold outreach email to a local business owner in Indonesia.
 
 Business: ${req.business_name}
 Industry: ${req.niche}
 Location: ${req.location ?? 'local area'}
 ${ratingNote}
 
-Identified opportunities for improvement:
+Observed opportunities:
 ${issueList}
 
-Write a SHORT, HELPFUL outreach email with subject line and body.
+Write a SHORT, PROFESSIONAL cold outreach email in INDONESIAN.
 Requirements:
-- Maximum 120 words total
-- Professional but friendly tone
-- Value-focused (what they gain, not what they lack)
-- Mention 1-2 specific improvements from the list above
-- No fake promises or price mentions
-- End with a soft call to action (reply to chat, free audit, etc.)
+- Exactly 3 paragraphs, no bullet points
+- Paragraph 1: Introduce yourself briefly + 1 specific observation about their business
+- Paragraph 2: 1 concrete improvement you can help with + clear business benefit (more customers, more revenue)
+- Paragraph 3: Soft CTA — suggest a 15-minute call or WhatsApp chat this week
+- Professional but warm tone (peer-to-peer, not consultant-to-client)
+- NO generic phrases like "audit gratis", "5-minute audit", "quick chat"
+- Subject line: specific to their business, max 8 words, no emoji
+- End with: "Salam, [Nama] | Digital Marketing Consultant"
 
-Format your response EXACTLY as:
-SUBJECT: [subject line here]
-BODY: [email body here]`;
+Format EXACTLY:
+SUBJECT: [subject here]
+BODY: [3 paragraphs here]`;
 }
 
 // ── OpenRouter API call ───────────────────────────────────────
@@ -103,34 +105,24 @@ function parseAiResponse(content: string): { subject: string; body: string } {
 // ── Template fallback ─────────────────────────────────────────
 
 function generateTemplate(req: OutreachRequest): { subject: string; body: string } {
-  const topIssue = req.reasons[0] ?? 'digital presence improvements';
-  const secondIssue = req.reasons[1];
+  const topIssue = req.reasons[0] ?? 'memperkuat presence digital';
+  const businessName = req.business_name;
+  const location = req.location ?? 'di area Anda';
 
-  const subject = `Quick tip for ${req.business_name} — grow your ${req.niche} business`;
+  const subject = `Ide pertumbuhan untuk ${businessName}`;
 
-  const bodyParts = [
-    `Hi ${req.business_name} team,`,
-    '',
-    `I came across your ${req.niche} business and noticed an opportunity that could help you attract more clients.`,
-  ];
+  const body = `Halo tim ${businessName},
 
-  if (topIssue) {
-    bodyParts.push('', `Specifically: ${topIssue.toLowerCase()}.`);
-  }
-  if (secondIssue) {
-    bodyParts.push(`Also: ${secondIssue.toLowerCase()}.`);
-  }
+Saya menemukan profil bisnis Anda di ${location} dan melihat potensi besar untuk menarik lebih banyak pelanggan. ${topIssue ? `Secara spesifik: ${topIssue.toLowerCase()}.` : 'Dengan sedikit penyesuaian strategi digital, Anda bisa menjangkau lebih banyak pelanggan potensial.'}
 
-  bodyParts.push(
-    '',
-    'These are quick wins that could meaningfully improve your online visibility and bookings.',
-    '',
-    'I\'d love to share a free 5-minute audit with you. Would you be open to a quick chat?',
-    '',
-    'Best regards'
-  );
+Saya membantu bisnis lokal seperti Anda untuk tumbuh melalui strategi marketing yang tepat. Dalam waktu singkat, kita bisa diskusi bagaimana meningkatkan visibilitas online dan konversi pelanggan.
 
-  return { subject, body: bodyParts.join('\n') };
+Jika Anda tertarik diskusi singkat 15 menit minggu ini — via telepon atau WhatsApp — silakan balas email ini.
+
+Salam,
+[Nama] | Digital Marketing Consultant`;
+
+  return { subject, body };
 }
 
 // ── Main export ───────────────────────────────────────────────
@@ -174,54 +166,51 @@ export async function generateOutreach(req: OutreachRequest): Promise<OutreachDr
 
 function buildHumanPrompt(req: AutoOutreachInput): string {
   const tech = req.enrichment?.tech?.cms?.value ?? 'unknown';
-  const detectedTech = req.enrichment?.tech?.detected_tech?.value ?? [];
   const hasWhatsApp = req.deepEnrichment.phones.some(p => p.value.includes('wa.me') || p.value.includes('+62'));
   const hasInstagram = req.deepEnrichment.socials?.instagram;
   const hasFacebook = req.deepEnrichment.socials?.facebook;
-  const hasLinkedIn = req.deepEnrichment.socials?.linkedin;
   const hasBooking = req.enrichment?.website?.has_booking?.value;
   const hasSSL = req.enrichment?.website?.has_ssl?.value;
   const hasContactForm = req.enrichment?.website?.has_contact_form?.value;
-  const confidence = req.deepEnrichment.overallConfidence;
   
   // Build discovered insights
   const insights: string[] = [];
-  if (tech !== 'unknown') insights.push(`Using ${tech} for website`);
-  if (hasSSL === true) insights.push('Has SSL (secure)');
-  if (hasSSL !== true) insights.push('No SSL detected');
-  if (hasWhatsApp) insights.push('Uses WhatsApp for business');
-  if (hasBooking) insights.push('Has booking system');
-  if (!hasBooking) insights.push('No online booking');
-  if (hasContactForm) insights.push('Has contact form');
-  if (hasInstagram) insights.push(`Active on Instagram`);
-  if (hasFacebook) insights.push('On Facebook');
+  if (tech !== 'unknown') insights.push(`Menggunakan ${tech} untuk website`);
+  if (hasSSL === true) insights.push('Website memiliki SSL (aman)');
+  if (hasSSL !== true) insights.push('Website belum memiliki SSL');
+  if (hasWhatsApp) insights.push('Menggunakan WhatsApp untuk bisnis');
+  if (hasBooking) insights.push('Memiliki sistem booking online');
+  if (!hasBooking) insights.push('Belum memiliki booking online');
+  if (hasContactForm) insights.push('Memiliki form kontak di website');
+  if (hasInstagram) insights.push(`Aktif di Instagram`);
+  if (hasFacebook) insights.push('Memiliki Facebook page');
   
   const insightsText = insights.length > 0 
     ? insights.map(i => `- ${i}`).join('\n')
-    : '- No specific tech or social data found';
+    : '- Tidak ada data spesifik ditemukan';
 
-  return `You are a friendly local business consultant writing to ${req.businessName} in ${req.location}.
+  return `Anda adalah konsultan bisnis lokal yang menulis email ke pemilik ${req.businessName} di ${req.location}.
 
-CONTEXT:
-- Industry: ${req.niche}
-- Google Rating: ${req.rating ?? 'N/A'}/5 (${req.review_count ?? 0} reviews)
-- Data Confidence: ${(confidence * 100).toFixed(0)}%
+KONTEKS:
+- Industri: ${req.niche}
+- Rating Google: ${req.rating ?? 'N/A'}/5 (${req.review_count ?? 0} ulasan)
 
-DISCOVERED INSIGHTS:
+INSIGHT YANG DITEMUKAN:
 ${insightsText}
 
-IMPORTANT RULES:
-1. Reference 1-2 specific things you noticed from the insights above
-2. Be genuinely helpful, NOT salesy
-3. Keep it SHORT - under 100 words total
-4. Use casual-professional tone (like a helpful peer, not a consultant)
-5. End naturally - no "Best regards" (use "Salam" or just your name)
-6. NEVER use bullet points or numbered lists
-7. Make 1 specific, actionable suggestion
+ATURAN PENTING (Bahasa Indonesia):
+1. Sebutkan 1-2 hal spesifik dari insight di atas
+2. Bersikap membantu dan tulus, BUKAN salesy
+3. Singkat dan padat - maksimal 100 kata
+4. Gunakan tone profesional-tapi-santai (seperti rekan, bukan konsultan)
+5. AKHIRI dengan: "Salam, [Nama] | Digital Marketing Consultant"
+6. JANGAN gunakan bullet points atau angka
+7. Berikan 1 saran spesifik yang actionable
+8. JANGAN sebut persentase, angka teknis, atau statistik
 
-Format EXACTLY as:
-SUBJECT: [catchy but relevant subject line]
-BODY: [1-2 short paragraphs, no lists]`;
+Format PERSIS seperti:
+SUBJECT: [subject line yang relevan]
+BODY: [1-2 paragraf singkat, tanpa list]`;
 }
 
 // ── Main Auto Outreach Export ───────────────────────────
@@ -260,8 +249,8 @@ export async function generateAutoOutreach(req: AutoOutreachInput): Promise<Outr
     log('warn', `Auto-outreach failed: ${msg}`);
     
     // Simple fallback template
-    const subject = `Quick tip for ${req.businessName}`;
-    const body = `Hi ${req.businessName} team,\n\nI came across your business and wanted to share some thoughts on growing your online presence.\n\nWould you be open to a free quick audit?\n\nSalam`;
+    const subject = `Ide pertumbuhan untuk ${req.businessName}`;
+    const body = `Halo tim ${req.businessName},\n\nSaya menemukan bisnis Anda dan melihat potensi untuk meningkatkan presence digital. Ada beberapa hal sederhana yang bisa membantu menarik lebih banyak pelanggan.\n\nJika Anda tertarik diskusi singkat 15 menit minggu ini, silakan balas email ini.\n\nSalam,\n[Nama] | Digital Marketing Consultant`;
     
     return {
       subject,

@@ -102,6 +102,7 @@ async function initSchema(pool: Pool): Promise<void> {
 
       CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at DESC);
     `);
+    await initUsersSchema(pool);
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -241,4 +242,58 @@ export async function getRecentLogs(limit = 100): Promise<Array<{
     [limit]
   );
   return res.rows;
+}
+
+// ── Users table schema (run once) ─────────────────────────────
+export async function initUsersSchema(pool: Pool): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      default_niche TEXT DEFAULT 'local',
+      from_name TEXT DEFAULT 'XTools Outreach',
+      from_email TEXT DEFAULT 'onboarding@resend.dev',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+}
+
+// ── User query functions ───────────────────────────────────────
+export interface DbUser {
+  id: number;
+  email: string;
+  name: string;
+  password_hash: string;
+  created_at: string;
+}
+
+export async function createUser(email: string, name: string, passwordHash: string): Promise<DbUser> {
+  const pool = getPool();
+  const res = await pool.query(
+    `INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING *`,
+    [email.toLowerCase().trim(), name.trim(), passwordHash]
+  );
+  await pool.query(
+    `INSERT INTO user_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING`,
+    [res.rows[0].id]
+  );
+  return res.rows[0];
+}
+
+export async function getUserByEmail(email: string): Promise<DbUser | null> {
+  const pool = getPool();
+  const res = await pool.query(`SELECT * FROM users WHERE email = $1`, [email.toLowerCase().trim()]);
+  return res.rows[0] ?? null;
+}
+
+export async function getUserById(id: number): Promise<DbUser | null> {
+  const pool = getPool();
+  const res = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
+  return res.rows[0] ?? null;
 }

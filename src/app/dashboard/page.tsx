@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { BusinessListing, OutreachDraft, EnrichmentData } from '@/types';
 import type { DeepEnrichResult } from '@/types/deep-enrich';
+import { useSession, signOut } from 'next-auth/react';
 import { DeepEnrichButton } from './components/DeepEnrichButton';
 import { DeepEnrichPanel } from './components/DeepEnrichPanel';
 import { SendEmailButton } from './components/SendEmailButton';
+import { EmailDrawer } from './components/EmailDrawer';
 
 interface ScrapedLeadResponse {
   name: string;
@@ -127,11 +129,12 @@ function StatCard({
 
 // ── Outreach Modal ────────────────────────────────────────────
 
-function OutreachModal({ lead, outreach, onClose, onSent }: {
+function OutreachModal({ lead, outreach, onClose, onSent, onOpenDrawer }: {
   lead: BusinessListing;
   outreach: OutreachDraft;
   onClose: () => void;
   onSent?: (sentAt: string) => void;
+  onOpenDrawer?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -194,18 +197,8 @@ function OutreachModal({ lead, outreach, onClose, onSent }: {
 
           {lead.id && (
             <SendEmailButton
-              leadId={lead.id}
-              subject={outreach.subject}
-              body={outreach.body}
-              defaultTo={
-                lead.deepEnrichment?.emails?.[0]?.value ??
-                lead.enrichment?.website?.emails?.value?.[0] ??
-                ''
-              }
-              onSent={(sentAt) => {
-                onSent?.(sentAt);
-                onClose();
-              }}
+              onOpenDrawer={() => { onClose(); onOpenDrawer?.(); }}
+              hasSent={!!lead.sent_at}
             />
           )}
         </div>
@@ -486,7 +479,15 @@ export default function DashboardPage() {
   const [deepEnrichingIds, setDeepEnrichingIds] = useState<Set<number>>(new Set());
   const [selectedLead, setSelectedLead] = useState<BusinessListing | null>(null);
   const [selectedOutreach, setSelectedOutreach] = useState<{ lead: BusinessListing; outreach: OutreachDraft } | null>(null);
+  const [emailDrawer, setEmailDrawer] = useState<{
+    open: boolean;
+    lead: BusinessListing | null;
+    subject: string;
+    body: string;
+    defaultTo: string;
+  }>({ open: false, lead: null, subject: '', body: '', defaultTo: '' });
   const [niche, setNiche] = useState('');
+  const { data: session } = useSession();
   const [sortField, setSortField] = useState<'score' | 'rating' | 'created_at'>('score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [filterTier, setFilterTier] = useState<'all' | 'hot' | 'warm' | 'cold'>('all');
@@ -764,7 +765,18 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-3">
+            {session?.user && (
+              <div className="hidden sm:flex items-center gap-2 border-r border-white/5 pr-3 mr-1">
+                <span className="text-xs text-gray-600 truncate max-w-[160px]">{session.user.email}</span>
+                <button
+                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded-lg border border-white/5 hover:border-red-500/20"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
             {leads.length > 0 && (
               <>
                 <button
@@ -1201,8 +1213,41 @@ export default function DashboardPage() {
             );
             setSelectedOutreach(null);
           }}
+          onOpenDrawer={() => {
+            const lead = selectedOutreach.lead;
+            const outreach = selectedOutreach.outreach;
+            setEmailDrawer({
+              open: true,
+              lead,
+              subject: outreach.subject,
+              body: outreach.body,
+              defaultTo:
+                lead.deepEnrichment?.emails?.[0]?.value ??
+                lead.enrichment?.website?.emails?.value?.[0] ??
+                '',
+            });
+          }}
         />
       )}
+
+      {/* ── EMAIL DRAWER ── */}
+      <EmailDrawer
+        open={emailDrawer.open}
+        onClose={() => setEmailDrawer((p) => ({ ...p, open: false }))}
+        leadId={emailDrawer.lead?.id ?? 0}
+        leadName={emailDrawer.lead?.name ?? ''}
+        subject={emailDrawer.subject}
+        body={emailDrawer.body}
+        defaultTo={emailDrawer.defaultTo}
+        onSent={(sentAt) => {
+          setLeads((prev) =>
+            prev.map((l) =>
+              l.id === emailDrawer.lead?.id ? { ...l, sent_at: sentAt } : l
+            )
+          );
+          setEmailDrawer((p) => ({ ...p, open: false }));
+        }}
+      />
 
       {/* ── FOOTER ── */}
       <footer className="w-full py-6 text-center text-[10px] text-gray-600/60 font-mono tracking-widest border-t border-white/[0.04] mt-8">

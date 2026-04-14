@@ -6,6 +6,8 @@ import type { DeepEnrichResult } from '@/types/deep-enrich';
 import { DeepEnrichButton } from './components/DeepEnrichButton';
 import { DeepEnrichPanel } from './components/DeepEnrichPanel';
 import { SendEmailButton } from './components/SendEmailButton';
+import { EmailDrawer } from './components/EmailDrawer';
+import { useSession, signOut } from 'next-auth/react';
 
 interface ScrapedLeadResponse {
   name: string;
@@ -127,11 +129,12 @@ function StatCard({
 
 // ── Outreach Modal ────────────────────────────────────────────
 
-function OutreachModal({ lead, outreach, onClose, onSent }: {
+function OutreachModal({ lead, outreach, onClose, onSent, onOpenDrawer }: {
   lead: BusinessListing;
   outreach: OutreachDraft;
   onClose: () => void;
   onSent?: (sentAt: string) => void;
+  onOpenDrawer?: (lead: BusinessListing) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -194,18 +197,11 @@ function OutreachModal({ lead, outreach, onClose, onSent }: {
 
           {lead.id && (
             <SendEmailButton
-              leadId={lead.id}
-              subject={outreach.subject}
-              body={outreach.body}
-              defaultTo={
-                lead.deepEnrichment?.emails?.[0]?.value ??
-                lead.enrichment?.website?.emails?.value?.[0] ??
-                ''
-              }
-              onSent={(sentAt) => {
-                onSent?.(sentAt);
+              onOpenDrawer={() => {
                 onClose();
+                onOpenDrawer?.(lead);
               }}
+              hasSent={!!lead.sent_at}
             />
           )}
         </div>
@@ -474,6 +470,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
 // ── Main Dashboard ────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { data: session } = useSession();
   const [keyword, setKeyword] = useState('');
   const [location, setLocation] = useState('');
   const [limit, setLimit] = useState(10);
@@ -491,7 +488,27 @@ export default function DashboardPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [filterTier, setFilterTier] = useState<'all' | 'hot' | 'warm' | 'cold'>('all');
   const [showLog, setShowLog] = useState(false);
+  const [emailDrawer, setEmailDrawer] = useState<{
+    open: boolean;
+    lead: BusinessListing | null;
+    subject: string;
+    body: string;
+    defaultTo: string;
+  }>({ open: false, lead: null, subject: '', body: '', defaultTo: '' });
   const logRef = useRef<HTMLDivElement>(null);
+
+  const openEmailDrawer = useCallback((lead: BusinessListing) => {
+    setEmailDrawer({
+      open: true,
+      lead,
+      subject: lead.outreach?.subject ?? '',
+      body: lead.outreach?.body ?? '',
+      defaultTo:
+        lead.deepEnrichment?.emails?.[0]?.value ??
+        lead.enrichment?.website?.emails?.value?.[0] ??
+        '',
+    });
+  }, []);
 
   const addLog = useCallback((level: LogLine['level'], msg: string) => {
     setLogs((p) => [...p.slice(-199), { ts: new Date().toLocaleTimeString(), level, msg }]);
@@ -765,6 +782,17 @@ export default function DashboardPage() {
           )}
 
           <div className="ml-auto flex items-center gap-2">
+            {session?.user?.email && (
+              <div className="hidden md:flex items-center gap-2 border-r border-white/[0.07] pr-3 mr-1">
+                <span className="text-xs text-gray-500">{session.user.email}</span>
+                <button
+                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded border border-white/5 hover:border-red-500/20"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
             {leads.length > 0 && (
               <>
                 <button
@@ -1127,6 +1155,14 @@ export default function DashboardPage() {
                             >
                               ›
                             </button>
+                            {lead.sent_at && (
+                              <span
+                                className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full"
+                                title={`Email terkirim: ${new Date(lead.sent_at).toLocaleString()}`}
+                              >
+                                ✉ Sent
+                              </span>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1201,8 +1237,26 @@ export default function DashboardPage() {
             );
             setSelectedOutreach(null);
           }}
+          onOpenDrawer={openEmailDrawer}
         />
       )}
+
+      {/* ── EMAIL DRAWER ── */}
+      <EmailDrawer
+        open={emailDrawer.open}
+        onClose={() => setEmailDrawer((p) => ({ ...p, open: false }))}
+        leadId={emailDrawer.lead?.id ?? 0}
+        leadName={emailDrawer.lead?.name ?? ''}
+        subject={emailDrawer.subject}
+        body={emailDrawer.body}
+        defaultTo={emailDrawer.defaultTo}
+        onSent={(sentAt) => {
+          setLeads((p) =>
+            p.map((l) => (l.id === emailDrawer.lead?.id ? { ...l, sent_at: sentAt } : l))
+          );
+          setEmailDrawer((p) => ({ ...p, open: false }));
+        }}
+      />
 
       {/* ── FOOTER ── */}
       <footer className="w-full py-6 text-center text-[10px] text-gray-600/60 font-mono tracking-widest border-t border-white/[0.04] mt-8">

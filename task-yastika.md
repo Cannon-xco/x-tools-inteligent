@@ -1,137 +1,153 @@
-  # Task: YASTIKA — Install Resend + Setup Environment
+# Task Yastika — Auth Setup (NextAuth + DB Users)
 
-**Branch:** `feat/email-setup`
-**Estimasi:** 3–4 jam
-**Reviewer:** Widi
+## Branch
+```
+git checkout -b feature/auth-setup-yastika
+```
 
----
+## Objective
+Install NextAuth.js v5, buat tabel `users` + `user_preferences` di PostgreSQL,
+buat DB query functions, dan setup NextAuth configuration.
 
-## 🎯 Tujuan
+## Steps
 
-Setup library pengiriman email (`resend`) dan pastikan semua environment variable sudah terkonfigurasi di local dan Railway.
-
----
-
-## ✅ TASK 1 — Install Package Resend
-
-Jalankan command berikut di root project:
-
+### 1. Install packages
 ```bash
-npm install resend
+npm install next-auth@beta bcryptjs
+npm install -D @types/bcryptjs
 ```
 
-Setelah install, pastikan `package.json` sudah ada entry:
-```json
-"resend": "^x.x.x"
+### 2. Tambah env vars ke `.env.local`
 ```
-
----
-
-## ✅ TASK 2 — Setup `.env.local`
-
-File `env.example` di root project sudah berisi **semua variable yang dibutuhkan** (sudah lengkap, tidak perlu diedit).
-
-**Langkah:**
-
-1. Copy file `env.example` → buat file baru bernama `.env.local`:
-   ```bash
-   copy env.example .env.local
-   ```
-
-2. Buka `.env.local` dan isi nilai yang nyata:
-
-   | Variable | Isi dengan |
-   |----------|-----------|
-   | `DATABASE_URL` | Minta dari Widi atau pakai local Docker |
-   | `OPENROUTER_API_KEY` | Minta dari Widi |
-   | `OPENROUTER_MODEL` | Biarkan default (`z-ai/glm-4.5-air:free`) |
-   | `RESEND_API_KEY` | Minta dari Widi |
-   | `RESEND_FROM_EMAIL` | `onboarding@resend.dev` (untuk testing) |
-   | `RESEND_FROM_NAME` | `XTools Outreach` |
-   | `ALLOWED_ORIGINS` | `localhost:3000` (untuk local dev) |
-
-> ⚠️ **Jangan pernah commit `.env.local` ke git!** File ini sudah ada di `.gitignore`.
-
----
-
-## ✅ TASK 3 — Set Env Vars di Railway
-
-1. Buka project di [railway.app](https://railway.app)
-2. Pergi ke tab **Variables**
-3. Tambahkan 3 variable berikut:
-
-| Variable | Value |
-|----------|-------|
-| `RESEND_API_KEY` | Minta dari Widi |
-| `RESEND_FROM_EMAIL` | `onboarding@resend.dev` |
-| `RESEND_FROM_NAME` | `XTools Outreach` |
-
----
-
-## ✅ TASK 4 — Test Instalasi
-
-Jalankan perintah berikut untuk memastikan tidak ada TypeScript error:
-
-```bash
-npx tsc --noEmit
+NEXTAUTH_SECRET=generate-random-32-char-string-here
+NEXTAUTH_URL=http://localhost:3000
 ```
+Generate secret dengan: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
-Output harus: **tidak ada error** (kosong).
+### 3. UPDATE: `src/lib/db/client.ts`
+Tambah di bagian bawah file (setelah fungsi existing), schema migration untuk users, dan query functions:
 
----
-
-## ✅ TASK 5 — Buat Test Script Sederhana
-
-Buat file `scripts/test-resend.ts` (jangan di `src/`) untuk memastikan Resend bisa digunakan:
-
-```typescript
-// scripts/test-resend.ts
-// Jalankan: npx ts-node scripts/test-resend.ts
-import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-async function main() {
-  const { data, error } = await resend.emails.send({
-    from: 'onboarding@resend.dev',
-    to: 'kadekwidi@deltaxs.co',   // ganti dengan email test kamu
-    subject: 'Test from XTools',
-    html: '<p>Email test berhasil! 🎉</p>',
-  });
-
-  if (error) {
-    console.error('❌ Error:', error);
-    return;
-  }
-
-  console.log('✅ Email terkirim! ID:', data?.id);
+```ts
+// ── Users table schema (run once) ─────────────────────────────
+export async function initUsersSchema(pool: Pool): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      default_niche TEXT DEFAULT 'local',
+      from_name TEXT DEFAULT 'XTools Outreach',
+      from_email TEXT DEFAULT 'onboarding@resend.dev',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
 }
 
-main();
+// ── User query functions ───────────────────────────────────────
+export interface DbUser {
+  id: number;
+  email: string;
+  name: string;
+  password_hash: string;
+  created_at: string;
+}
+
+export async function createUser(email: string, name: string, passwordHash: string): Promise<DbUser> {
+  const pool = getPool();
+  const res = await pool.query(
+    `INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING *`,
+    [email.toLowerCase().trim(), name.trim(), passwordHash]
+  );
+  await pool.query(
+    `INSERT INTO user_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING`,
+    [res.rows[0].id]
+  );
+  return res.rows[0];
+}
+
+export async function getUserByEmail(email: string): Promise<DbUser | null> {
+  const pool = getPool();
+  const res = await pool.query(`SELECT * FROM users WHERE email = $1`, [email.toLowerCase().trim()]);
+  return res.rows[0] ?? null;
+}
+
+export async function getUserById(id: number): Promise<DbUser | null> {
+  const pool = getPool();
+  const res = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
+  return res.rows[0] ?? null;
+}
 ```
 
-> Minta API key dari Widi sebelum menjalankan script ini.
-
----
-
-## 📋 Checklist Sebelum PR
-
-- [ ] `npm install resend` sudah dijalankan
-- [ ] `env.example` di-copy ke `.env.local` dan sudah diisi nilai nyata
-- [ ] `.env.local` sudah ada `RESEND_API_KEY` (dari Widi)
-- [ ] Railway env vars sudah diset
-- [ ] `npx tsc --noEmit` → 0 errors
-- [ ] `scripts/test-resend.ts` sudah dibuat
-
----
-
-## 🚀 Cara Submit
-
-```bash
-git checkout -b feat/email-setup
-git add package.json package-lock.json scripts/
-git commit -m "feat(email): add resend package and env configuration"
-git push origin feat/email-setup
+Juga panggil `initUsersSchema` di `initSchema` function yang sudah ada:
+```ts
+// Di dalam initSchema function, tambah baris:
+await initUsersSchema(pool);
 ```
 
-Buat Pull Request ke `main`, tag reviewer: **Widi**.
+### 4. BUAT BARU: `src/auth.ts` (di root src/)
+```ts
+import NextAuth from 'next-auth';
+import Credentials from 'next-auth/providers/credentials';
+import bcrypt from 'bcryptjs';
+import { getUserByEmail } from '@/lib/db/client';
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  providers: [
+    Credentials({
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      authorize: async (credentials) => {
+        const email = credentials?.email as string;
+        const password = credentials?.password as string;
+        if (!email || !password) return null;
+        const user = await getUserByEmail(email);
+        if (!user) return null;
+        const valid = await bcrypt.compare(password, user.password_hash);
+        if (!valid) return null;
+        return { id: String(user.id), email: user.email, name: user.name };
+      },
+    }),
+  ],
+  pages: { signIn: '/login' },
+  session: { strategy: 'jwt' },
+  callbacks: {
+    jwt({ token, user }) {
+      if (user) { token.id = user.id; }
+      return token;
+    },
+    session({ session, token }) {
+      if (session.user) { session.user.id = token.id as string; }
+      return session;
+    },
+  },
+});
+```
+
+### 5. BUAT BARU: `src/app/api/auth/[...nextauth]/route.ts`
+```ts
+import { handlers } from '@/auth';
+export const { GET, POST } = handlers;
+```
+
+### 6. BUAT BARU: `src/app/api/auth/register/route.ts`
+Endpoint POST untuk register user baru:
+- Validasi email (format valid, belum terdaftar)
+- Validasi password (min 8 karakter)
+- Hash password dengan bcrypt (cost factor 12)
+- Simpan ke DB
+- Return: `{ success: true, message: "Akun berhasil dibuat" }`
+- Error 409 jika email sudah ada
+
+## Done When
+- `npm install` berhasil tanpa error
+- DB auto-create tabel `users` dan `user_preferences` saat server start
+- `POST /api/auth/register` bisa register user baru
+- `POST /api/auth/signin` (NextAuth) bisa login dengan kredensial yang benar
+- Tidak ada TypeScript errors

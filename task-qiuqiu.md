@@ -1,283 +1,98 @@
-  # Task: QIUQIU — Dashboard UI Integration (Email + Badges)
+# Task Qiuqiu — Dashboard Integration (EmailDrawer + Auth UI)
 
-**Branch:** `feat/dashboard-email-ui`
-**Estimasi:** 4–6 jam
-**Reviewer:** Widi
-**Depends on:** Task Prayoga selesai (`SendEmailButton.tsx` sudah ada)
-
----
-
-## 🎯 Tujuan
-
-Integrasikan `SendEmailButton` ke dalam dashboard dan tambahkan dua badge baru di tabel lead: "Enriched" (hasil DEE) dan "Sent" (email sudah terkirim). Tambah stats card "Sent" di bagian atas.
-
----
-
-## 📁 File yang Diubah
-
+## Branch
 ```
-src/app/dashboard/page.tsx   ← MODIFIKASI (hati-hati, file besar)
+git checkout -b feature/dashboard-drawer-qiuqiu
 ```
 
----
+## Prerequisite
+Tunggu branch `feature/email-drawer-prayoga` selesai dan merge ke `main` dulu,
+lalu `git merge main` ke branch ini.
 
-## ✅ TASK 1 — Import `SendEmailButton`
+## Objective
+Integrasikan `EmailDrawer` ke dashboard dan update UI dashboard untuk
+menampilkan info login user + tombol logout.
 
-Di bagian paling atas `src/app/dashboard/page.tsx`, tambahkan import:
+## Files
 
-```typescript
-import { SendEmailButton } from './components/SendEmailButton';
-```
+### 1. UPDATE BESAR: `src/app/dashboard/page.tsx`
 
-Taruh setelah baris import `DeepEnrichPanel`:
-```typescript
-import { DeepEnrichPanel } from './components/DeepEnrichPanel';
-import { SendEmailButton } from './components/SendEmailButton';   // ← tambahkan
-```
-
----
-
-## ✅ TASK 2 — Update `OutreachModal` — Tambah Send Button
-
-Cari function `OutreachModal` di `page.tsx`. Di bagian **Footer** modal (setelah tombol copy), tambahkan `SendEmailButton`:
-
-**Sebelum:**
-```tsx
-{/* Footer */}
-<div className="px-6 pb-5">
-  <button
-    onClick={copy}
-    className={`w-full py-2.5 rounded-xl font-medium text-sm transition-all ${
-      copied ? 'bg-emerald-600 text-white' : 'bg-violet-600 hover:bg-violet-500 text-white'
-    }`}
-  >
-    {copied ? '✓ Copied!' : '📋 Copy Subject + Body'}
-  </button>
-</div>
-```
-
-**Sesudah:**
-```tsx
-{/* Footer */}
-<div className="px-6 pb-5 space-y-2">
-  <button
-    onClick={copy}
-    className={`w-full py-2.5 rounded-xl font-medium text-sm transition-all ${
-      copied ? 'bg-emerald-600 text-white' : 'bg-violet-600 hover:bg-violet-500 text-white'
-    }`}
-  >
-    {copied ? '✓ Copied!' : '📋 Copy Subject + Body'}
-  </button>
-
-  {lead.id && (
-    <SendEmailButton
-      leadId={lead.id}
-      subject={outreach.subject}
-      body={outreach.body}
-      defaultTo={
-        lead.deepEnrichment?.emails?.[0]?.value ??
-        lead.enrichment?.website?.emails?.value?.[0] ??
-        ''
-      }
-      onSent={(sentAt) => {
-        onSent?.(sentAt);
-        onClose();
-      }}
-    />
-  )}
-</div>
-```
-
-Karena `OutreachModal` sekarang menerima prop `onSent`, ubah juga **signature function**-nya:
-
-```tsx
-// Sebelum:
-function OutreachModal({ lead, outreach, onClose }: {
-  lead: BusinessListing;
-  outreach: OutreachDraft;
-  onClose: () => void;
-})
-
-// Sesudah:
-function OutreachModal({ lead, outreach, onClose, onSent }: {
-  lead: BusinessListing;
-  outreach: OutreachDraft;
-  onClose: () => void;
-  onSent?: (sentAt: string) => void;
-})
-```
-
----
-
-## ✅ TASK 3 — Update `OutreachModal` Usage
-
-Cari tempat `OutreachModal` dipanggil di `return` utama halaman (bagian bawah file):
-
-```tsx
-{/* ── OUTREACH MODAL ── */}
-{selectedOutreach && (
-  <OutreachModal
-    lead={selectedOutreach.lead}
-    outreach={selectedOutreach.outreach}
-    onClose={() => setSelectedOutreach(null)}
+**A. Integrasi EmailDrawer:**
+- Import `EmailDrawer` dari `./components/EmailDrawer`
+- Tambah state:
+  ```ts
+  const [emailDrawer, setEmailDrawer] = useState<{
+    open: boolean;
+    lead: BusinessListing | null;
+    subject: string;
+    body: string;
+    defaultTo: string;
+  }>({ open: false, lead: null, subject: '', body: '', defaultTo: '' });
+  ```
+- Tambah fungsi `openEmailDrawer(lead: BusinessListing)`:
+  - Set `emailDrawer.open = true`
+  - Pre-fill subject, body dari `lead.outreach`
+  - Pre-fill defaultTo dari `lead.deepEnrichment?.emails?.[0]?.value`
+- Di dalam `OutreachModal` footer — ganti `<SendEmailButton .../>` jadi:
+  ```tsx
+  <SendEmailButton
+    onOpenDrawer={() => {
+      onClose(); // tutup modal dulu
+      openEmailDrawer(lead);
+    }}
+    hasSent={!!lead.sent_at}
   />
-)}
-```
-
-Ubah menjadi:
-
-```tsx
-{/* ── OUTREACH MODAL ── */}
-{selectedOutreach && (
-  <OutreachModal
-    lead={selectedOutreach.lead}
-    outreach={selectedOutreach.outreach}
-    onClose={() => setSelectedOutreach(null)}
+  ```
+- Render `<EmailDrawer />` di root level (setelah OutreachModal):
+  ```tsx
+  <EmailDrawer
+    open={emailDrawer.open}
+    onClose={() => setEmailDrawer(p => ({ ...p, open: false }))}
+    leadId={emailDrawer.lead?.id!}
+    leadName={emailDrawer.lead?.name ?? ''}
+    subject={emailDrawer.subject}
+    body={emailDrawer.body}
+    defaultTo={emailDrawer.defaultTo}
     onSent={(sentAt) => {
-      setLeads((prev) =>
-        prev.map((l) =>
-          l.id === selectedOutreach.lead.id ? { ...l, sent_at: sentAt } : l
-        )
-      );
-      setSelectedOutreach(null);
+      setLeads(p => p.map(l => l.id === emailDrawer.lead?.id ? { ...l, sent_at: sentAt } : l));
+      setEmailDrawer(p => ({ ...p, open: false }));
     }}
   />
-)}
-```
+  ```
 
----
-
-## ✅ TASK 4 — Tambah Stats Counter `withSent`
-
-Cari bagian `// ── Stats ──` di `page.tsx`:
-
-```typescript
-const hot = leads.filter((l) => (l.score ?? 0) >= 60).length;
-const warm = leads.filter((l) => (l.score ?? 0) >= 30 && (l.score ?? 0) < 60).length;
-const cold = leads.filter((l) => l.score !== undefined && (l.score ?? 0) < 30).length;
-const enriched = leads.filter((l) => l.enrichment?.final_url).length;
-const withOutreach = leads.filter((l) => l.outreach).length;
-const noWebsite = leads.filter((l) => !l.website).length;
-```
-
-Tambahkan **dua baris baru** di bawah `noWebsite`:
-
-```typescript
-const withSent = leads.filter((l) => l.sent_at).length;
-const deepEnriched = leads.filter((l) => l.deepEnrichment).length;
-```
-
----
-
-## ✅ TASK 5 — Tambah Stats Cards Baru
-
-Cari bagian stats cards di JSX:
-
-```tsx
-<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-  <StatCard icon="📋" label="Total Leads" value={leads.length} color="border-white/[0.07]" />
-  <StatCard icon="🔥" label="Hot Leads" value={hot} sub="Score ≥ 60" color="border-red-900/30" />
-  <StatCard icon="🌡" label="Warm Leads" value={warm} sub="Score 30–59" color="border-amber-900/30" />
-  <StatCard icon="🌐" label="Enriched" value={enriched} sub={`${leads.length - enriched - noWebsite} pending`} color="border-cyan-900/30" />
-  <StatCard icon="✉️" label="Outreach" value={withOutreach} sub="drafts ready" color="border-violet-900/30" />
-  <StatCard icon="⚠️" label="No Website" value={noWebsite} sub="direct contact" color="border-orange-900/30" />
-</div>
-```
-
-Ubah grid menjadi 8 kolom dan tambahkan 2 card baru:
-
-```tsx
-<div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-  <StatCard icon="📋" label="Total Leads" value={leads.length} color="border-white/[0.07]" />
-  <StatCard icon="🔥" label="Hot Leads" value={hot} sub="Score ≥ 60" color="border-red-900/30" />
-  <StatCard icon="🌡" label="Warm Leads" value={warm} sub="Score 30–59" color="border-amber-900/30" />
-  <StatCard icon="🌐" label="Enriched" value={enriched} sub={`${leads.length - enriched - noWebsite} pending`} color="border-cyan-900/30" />
-  <StatCard icon="🔬" label="Deep Enriched" value={deepEnriched} sub="DEE completed" color="border-violet-900/30" />
-  <StatCard icon="✉️" label="Outreach" value={withOutreach} sub="drafts ready" color="border-blue-900/30" />
-  <StatCard icon="📨" label="Sent" value={withSent} sub="emails sent" color="border-emerald-900/30" />
-  <StatCard icon="⚠️" label="No Website" value={noWebsite} sub="direct contact" color="border-orange-900/30" />
-</div>
-```
-
----
-
-## ✅ TASK 6 — Tambah Badges di Kolom Signals Lead Table
-
-Cari bagian kolom "Signals" di tabel lead (`{/* Signals */}`):
-
-```tsx
-{/* Signals */}
-<td className="px-4 py-3">
-  {e ? (
-    <div className="flex flex-wrap gap-1">
-      <SignalBadge ok={e.website?.has_ssl?.value ?? false} label="SSL" tooltip="HTTPS / SSL certificate" />
-      ...
-    </div>
-  ) : (
-    <span className="text-gray-800 text-[10px]">
-      {lead.website ? '─ not enriched' : '─'}
-    </span>
-  )}
-</td>
-```
-
-Di dalam `<div className="flex flex-wrap gap-1">`, tambahkan dua badge **di akhir** list:
-
-```tsx
-{/* Badge: Deep Enriched */}
-{lead.deepEnrichment && (
-  <span
-    className="text-[10px] px-1.5 py-0.5 rounded-md font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20"
-    title={`DEE: ${lead.deepEnrichment.emails.length} emails, ${lead.deepEnrichment.phones.length} phones`}
-  >
-    🔬 DEE
+**B. Badge "Sent" di lead card:**
+- Jika `lead.sent_at` ada, tampilkan badge kecil:
+  ```tsx
+  <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+    ✉ Sent
   </span>
-)}
+  ```
+  (letakkan di dekat tombol aksi lead card)
 
-{/* Badge: Email Sent */}
-{lead.sent_at && (
-  <span
-    className="text-[10px] px-1.5 py-0.5 rounded-md font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20"
-    title={`Email terkirim: ${new Date(lead.sent_at).toLocaleString()}`}
-  >
-    📨 Sent
-  </span>
-)}
-```
+**C. Auth UI di header dashboard:**
+- Import `useSession` dan `signOut` dari `next-auth/react`
+- Di header dashboard, tambahkan:
+  ```tsx
+  // pojok kanan header
+  <div className="flex items-center gap-3">
+    <span className="text-xs text-gray-500">{session?.user?.email}</span>
+    <button
+      onClick={() => signOut({ callbackUrl: '/login' })}
+      className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded border border-white/5 hover:border-red-500/20"
+    >
+      Logout
+    </button>
+  </div>
+  ```
+- Wrap dalam `SessionProvider` di `layout.tsx` atau gunakan `useSession` dari komponen client
 
----
+### 2. UPDATE: `src/app/layout.tsx`
+- Tambah `SessionProvider` dari `next-auth/react` untuk wrap children
+  (diperlukan agar `useSession` bekerja di client components)
 
-## ✅ TASK 7 — Verifikasi TypeScript
-
-```bash
-npx tsc --noEmit
-```
-
-Harus: **0 errors**.
-
----
-
-## 📋 Checklist Sebelum PR
-
-- [ ] `SendEmailButton` sudah diimport di `page.tsx`
-- [ ] `OutreachModal` sudah punya prop `onSent` dan menampilkan `SendEmailButton`
-- [ ] `OutreachModal` usage sudah diupdate dengan `onSent` callback
-- [ ] Stats `withSent` dan `deepEnriched` sudah ada
-- [ ] Stats cards grid sudah diupdate (8 kolom)
-- [ ] Badges "🔬 DEE" dan "📨 Sent" sudah ada di Signals column
-- [ ] `npx tsc --noEmit` → 0 errors
-
----
-
-## 🚀 Cara Submit
-
-```bash
-git checkout -b feat/dashboard-email-ui
-git add src/app/dashboard/page.tsx
-git commit -m "feat(email): integrate SendEmailButton and email status badges in dashboard"
-git push origin feat/dashboard-email-ui
-```
-
-Buat Pull Request ke `main`, tag reviewer: **Widi**.
-
-> ⚠️ **Hati-hati:** `page.tsx` adalah file besar (1100+ baris). Gunakan Ctrl+F/Cmd+F untuk menemukan bagian yang tepat. Jangan hapus kode lain yang tidak ada di task ini.
+## Done When
+- Klik "Send Email" di OutreachModal buka drawer (bukan expand inline)
+- Drawer bisa diedit dan kirim email
+- Badge "Sent" muncul di lead card setelah email terkirim
+- Header dashboard tampilkan email user + tombol logout
+- Tidak ada TypeScript errors

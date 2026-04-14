@@ -1,253 +1,116 @@
-  # Task: DEKRES — API Route `POST /api/outreach/send`
+# Task Dekres — Middleware Auth + Email Prompt Improvement
 
-**Branch:** `feat/email-send-api`
-**Estimasi:** 4–6 jam
-**Reviewer:** Widi
-**Depends on:** Task Yastika selesai (`npm install resend` sudah ada)
-
----
-
-## 🎯 Tujuan
-
-Buat API endpoint yang menerima request kirim email, mengirimnya via Resend SDK, dan menyimpan timestamp pengiriman ke database.
-
----
-
-## 📁 Files yang Harus Dibuat / Dimodifikasi
-
-| File | Action |
-|------|--------|
-| `src/app/api/outreach/send/route.ts` | **BUAT BARU** |
-| `src/lib/db/client.ts` | **TAMBAHKAN** function `updateLeadSentAt` |
-| `src/types/index.ts` | **TAMBAHKAN** field `sent_at` ke interfaces |
-
----
-
-## ✅ TASK 1 — Tambah `sent_at` ke Database Schema
-
-Edit file `src/lib/db/client.ts`.
-
-Cari bagian `ALTER TABLE leads ADD COLUMN IF NOT EXISTS deep_enriched_at TIMESTAMP;` dan tambahkan baris baru **setelah** baris tersebut:
-
-```typescript
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;
+## Branch
+```
+git checkout -b feature/auth-middleware-dekres
 ```
 
-Juga tambahkan function helper baru setelah function `updateLeadOutreach`:
+## Prerequisite
+Tunggu branch `feature/auth-setup-yastika` selesai dan merge ke `main` dulu,
+lalu `git merge main` ke branch ini (butuh `src/auth.ts` dari Yastika).
 
-```typescript
-export async function updateLeadSentAt(id: number, sentAt: string): Promise<void> {
-  await getPool().query(
-    'UPDATE leads SET sent_at = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-    [sentAt, id]
-  );
-}
-```
+## Objective
+1. Buat middleware untuk protect `/dashboard` route
+2. Buat halaman Login dan Register
+3. Perbaiki kualitas email auto-generate (lebih profesional & bisnis)
 
 ---
 
-## ✅ TASK 2 — Tambah `sent_at` ke TypeScript Types
+## Sub-task A: Middleware + Auth Pages
 
-Edit file `src/types/index.ts`.
+### 1. BUAT BARU: `src/middleware.ts`
+```ts
+import { auth } from '@/auth';
+import { NextResponse } from 'next/server';
 
-**A.** Di interface `BusinessListing`, tambahkan field `sent_at` sebelum `created_at`:
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
+  const session = req.auth;
 
-```typescript
-sent_at?: string;
-created_at?: string;
-updated_at?: string;
-```
-
-**B.** Di interface `DbLead`, tambahkan field `sent_at` sebelum `created_at`:
-
-```typescript
-deep_enriched_at: string | null;
-sent_at: string | null;    // ← tambahkan ini
-created_at: string;
-updated_at: string;
-```
-
----
-
-## ✅ TASK 3 — Update Leads API untuk Include `sent_at`
-
-Edit file `src/app/api/leads/route.ts`.
-
-Cari bagian mapping `rows.map((row) => ({...}))` dan tambahkan `sent_at`:
-
-```typescript
-deepEnrichment: row.deep_enrichment_json ? JSON.parse(row.deep_enrichment_json) : undefined,
-sent_at: row.sent_at ?? undefined,   // ← tambahkan baris ini
-created_at: row.created_at,
-```
-
----
-
-## ✅ TASK 4 — Buat API Route `POST /api/outreach/send`
-
-Buat file baru: `src/app/api/outreach/send/route.ts`
-
-```typescript
-// ============================================================
-// API ROUTE: POST /api/outreach/send
-// Kirim outreach email via Resend SDK
-// ============================================================
-
-import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
-import { updateLeadSentAt, insertLog } from '@/lib/db/client';
-import type { ApiResponse } from '@/types';
-
-export const runtime = 'nodejs';
-
-interface SendEmailBody {
-  leadId: number;
-  to: string;
-  subject: string;
-  body: string;
-}
-
-/**
- * Validasi format email sederhana.
- */
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-}
-
-/**
- * POST /api/outreach/send
- *
- * Request body:
- * {
- *   "leadId": 123,
- *   "to": "target@example.com",
- *   "subject": "Quick tip for Acme Corp",
- *   "body": "Hi Acme Corp, ..."
- * }
- */
-export async function POST(req: NextRequest): Promise<NextResponse> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
-  const fromName = process.env.RESEND_FROM_NAME ?? 'XTools Outreach';
-
-  if (!apiKey || apiKey.startsWith('re_xxx')) {
-    return NextResponse.json<ApiResponse>({
-      success: false,
-      error: 'RESEND_API_KEY belum dikonfigurasi. Tambahkan ke .env.local',
-    }, { status: 503 });
+  // Protect dashboard
+  if (pathname.startsWith('/dashboard') && !session) {
+    return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  let body: SendEmailBody;
-  try {
-    body = (await req.json()) as SendEmailBody;
-  } catch {
-    return NextResponse.json<ApiResponse>(
-      { success: false, error: 'Invalid JSON body' },
-      { status: 400 }
-    );
+  // Redirect logged-in users away from login/register
+  if ((pathname === '/login' || pathname === '/register') && session) {
+    return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
-  const { leadId, to, subject, body: emailBody } = body;
+  return NextResponse.next();
+});
 
-  if (!leadId || typeof leadId !== 'number') {
-    return NextResponse.json<ApiResponse>(
-      { success: false, error: 'leadId harus berupa number' },
-      { status: 400 }
-    );
-  }
-  if (!to || !isValidEmail(to)) {
-    return NextResponse.json<ApiResponse>(
-      { success: false, error: 'Format email tujuan tidak valid' },
-      { status: 400 }
-    );
-  }
-  if (!subject?.trim()) {
-    return NextResponse.json<ApiResponse>(
-      { success: false, error: 'subject tidak boleh kosong' },
-      { status: 400 }
-    );
-  }
-  if (!emailBody?.trim()) {
-    return NextResponse.json<ApiResponse>(
-      { success: false, error: 'body email tidak boleh kosong' },
-      { status: 400 }
-    );
-  }
-
-  try {
-    const resend = new Resend(apiKey);
-
-    await insertLog('info', `📧 Mengirim email ke ${to} untuk lead #${leadId}`);
-
-    const { data, error } = await resend.emails.send({
-      from: `${fromName} <${fromEmail}>`,
-      to: [to.trim()],
-      subject: subject.trim(),
-      text: emailBody.trim(),
-    });
-
-    if (error) {
-      await insertLog('error', `❌ Resend error untuk lead #${leadId}: ${error.message}`);
-      return NextResponse.json<ApiResponse>(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
-
-    const sentAt = new Date().toISOString();
-    await updateLeadSentAt(leadId, sentAt);
-    await insertLog('info', `✅ Email terkirim ke ${to} untuk lead #${leadId} (id: ${data?.id})`);
-
-    return NextResponse.json<ApiResponse<{ messageId: string; sent_at: string }>>({
-      success: true,
-      data: {
-        messageId: data?.id ?? '',
-        sent_at: sentAt,
-      },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    await insertLog('error', `❌ outreach/send error untuk lead #${leadId}: ${msg}`);
-    return NextResponse.json<ApiResponse>(
-      { success: false, error: msg },
-      { status: 500 }
-    );
-  }
-}
+export const config = {
+  matcher: ['/dashboard/:path*', '/login', '/register'],
+};
 ```
+
+### 2. BUAT BARU: `src/app/login/page.tsx`
+Halaman login dengan:
+- Form: Email + Password + tombol "Masuk"
+- Link ke halaman register
+- Error message jika kredensial salah
+- Pakai `signIn('credentials', { email, password, redirectTo: '/dashboard' })` dari `next-auth/react`
+- Design: dark theme sama seperti dashboard, centered card
+
+### 3. BUAT BARU: `src/app/register/page.tsx`
+Halaman register dengan:
+- Form: Nama + Email + Password + Konfirmasi Password + tombol "Daftar"
+- Link ke halaman login
+- Call `POST /api/auth/register` lalu redirect ke `/login`
+- Validasi client-side: password match, min 8 karakter
+- Design: dark theme konsisten
 
 ---
 
-## ✅ TASK 5 — Verifikasi TypeScript
+## Sub-task B: Perbaikan Email Auto-Generate
 
-```bash
-npx tsc --noEmit
+### UPDATE: `src/lib/ai/generator.ts`
+
+**Update `buildPrompt()`** — Prompt lebih profesional:
+
+Ganti prompt lama dengan:
+```
+You are a professional B2B sales consultant writing a cold outreach email to a local business owner in Indonesia.
+
+Business: [name]
+Industry: [niche]  
+Location: [location]
+[rating note]
+
+Observed opportunities:
+[issues list]
+
+Write a SHORT, PROFESSIONAL cold outreach email in INDONESIAN.
+Requirements:
+- Exactly 3 paragraphs, no bullet points
+- Paragraph 1: Introduce yourself briefly + 1 specific observation about their business
+- Paragraph 2: 1 concrete improvement you can help with + clear business benefit (more customers, more revenue)
+- Paragraph 3: Soft CTA — suggest a 15-minute call or WhatsApp chat this week
+- Professional but warm tone (peer-to-peer, not consultant-to-client)
+- NO generic phrases like "audit gratis", "5-minute audit", "quick chat"
+- Subject line: specific to their business, max 8 words, no emoji
+- End with: "Salam, [Nama] | Digital Marketing Consultant"
+
+Format EXACTLY:
+SUBJECT: [subject here]
+BODY: [3 paragraphs here]
 ```
 
-Harus: **0 errors**.
+**Update `generateTemplate()`** — Template fallback yang lebih baik:
+- Subject: `Ide pertumbuhan untuk [nama bisnis]` (bukan "Quick tip")
+- Body: 3 paragraf terstruktur dengan opening yang menyebut detail spesifik bisnis
+- Tidak ada frasa generik seperti "free audit" atau "quick chat"
 
----
+**Update `buildHumanPrompt()`** — Human-feel prompt:
+- Instruksi bahasa Indonesia yang lebih kuat
+- Hapus "End naturally - no 'Best regards'" → ganti dengan instruksi spesifik tanda tangan
+- Tambah instruksi: jangan sebut persentase atau angka teknis kepada bisnis owner
 
-## 📋 Checklist Sebelum PR
-
-- [ ] `src/lib/db/client.ts` sudah ada `ALTER TABLE ... ADD COLUMN IF NOT EXISTS sent_at`
-- [ ] `src/lib/db/client.ts` sudah ada function `updateLeadSentAt()`
-- [ ] `src/types/index.ts` sudah ada `sent_at` di `BusinessListing` dan `DbLead`
-- [ ] `src/app/api/leads/route.ts` sudah include `sent_at` di mapping
-- [ ] `src/app/api/outreach/send/route.ts` sudah dibuat
-- [ ] `npx tsc --noEmit` → 0 errors
-
----
-
-## 🚀 Cara Submit
-
-```bash
-git checkout -b feat/email-send-api
-git add src/
-git commit -m "feat(email): add POST /api/outreach/send endpoint with Resend SDK"
-git push origin feat/email-send-api
-```
-
-Buat Pull Request ke `main`, tag reviewer: **Widi**.
-
-> 💡 **Tip:** Jika bingung dengan struktur kode, buka file `src/app/api/outreach/route.ts` sebagai referensi — strukturnya mirip.
+## Done When
+- Akses `/dashboard` tanpa login → redirect ke `/login`
+- Halaman `/login` dan `/register` berfungsi
+- Setelah register + login → bisa akses `/dashboard`
+- Email yang di-generate lebih profesional dan dalam bahasa Indonesia
+- Template fallback tidak generik
+- Tidak ada TypeScript errors

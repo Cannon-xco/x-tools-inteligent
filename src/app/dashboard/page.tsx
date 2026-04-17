@@ -72,6 +72,22 @@ function Spinner({ size = 'sm', color = 'white' }: { size?: 'sm' | 'md'; color?:
   return <span className={`inline-block ${s} border-current/30 border-t-current rounded-full animate-spin`} style={{ color }} />;
 }
 
+// ── Tooltip ────────────────────────────────────────────────────
+
+function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <div className="relative group/tip inline-flex w-full">
+      {children}
+      <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 opacity-0 group-hover/tip:opacity-100 transition-opacity duration-150">
+        <div className="bg-[#1e2235] border border-white/10 text-gray-200 text-[11px] rounded-lg px-2.5 py-1.5 whitespace-nowrap shadow-xl max-w-[220px] text-center leading-relaxed">
+          {text}
+        </div>
+        <div className="w-2 h-2 bg-[#1e2235] border-r border-b border-white/10 rotate-45 mx-auto -mt-1" />
+      </div>
+    </div>
+  );
+}
+
 // ── Signal Badge ──────────────────────────────────────────────
 
 function SignalBadge({ ok, label, tooltip }: { ok: boolean; label: string; tooltip?: string }) {
@@ -261,33 +277,41 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
           <div className="space-y-2">
             <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">Actions</p>
             <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={onEnrich}
-                disabled={enriching}
-                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-sm font-medium transition-all disabled:opacity-50"
-              >
-                {enriching ? <Spinner color="#22d3ee" /> : '🔍'} {enriching ? 'Scanning…' : lead.website ? 'Enrich Site' : 'Discover Site'}
-              </button>
-              <button
-                onClick={onScore}
-                disabled={scoring}
-                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-sm font-medium transition-all disabled:opacity-50"
-              >
-                {scoring ? <Spinner color="#fbbf24" /> : '📊'} {scoring ? 'Scoring…' : 'Score Lead'}
-              </button>
-              <DeepEnrichButton
-                leadId={lead.id!}
-                leadName={lead.name}
-                isEnriched={!!lead.deepEnrichment}
-                onComplete={onDeepEnrichComplete}
-              />
-              <button
-                onClick={onOutreach}
-                disabled={generating}
-                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 text-violet-400 text-sm font-medium transition-all disabled:opacity-50 col-span-2"
-              >
-                {generating ? <Spinner color="#a78bfa" /> : '✉️'} {generating ? 'Generating…' : lead.outreach ? 'Regenerate Outreach' : 'Generate Outreach'}
-              </button>
+              <Tooltip text="Extract website data: SEO signals, tech stack, contact info">
+                <button
+                  onClick={onEnrich}
+                  disabled={enriching}
+                  className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-sm font-medium transition-all disabled:opacity-50 w-full"
+                >
+                  {enriching ? <Spinner color="#22d3ee" /> : '🔍'} {enriching ? 'Scanning…' : lead.website ? 'Enrich Site' : 'Discover Site'}
+                </button>
+              </Tooltip>
+              <Tooltip text="Calculate lead quality score based on website & presence signals">
+                <button
+                  onClick={onScore}
+                  disabled={scoring}
+                  className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-sm font-medium transition-all disabled:opacity-50 w-full"
+                >
+                  {scoring ? <Spinner color="#fbbf24" /> : '📊'} {scoring ? 'Scoring…' : 'Score Lead'}
+                </button>
+              </Tooltip>
+              <Tooltip text="Run deep enrichment: find verified emails, phone numbers & social profiles">
+                <DeepEnrichButton
+                  leadId={lead.id!}
+                  leadName={lead.name}
+                  isEnriched={!!lead.deepEnrichment}
+                  onComplete={onDeepEnrichComplete}
+                />
+              </Tooltip>
+              <Tooltip text="Generate an AI-written cold email draft for this lead">
+                <button
+                  onClick={onOutreach}
+                  disabled={generating}
+                  className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 text-violet-400 text-sm font-medium transition-all disabled:opacity-50 col-span-2 w-full"
+                >
+                  {generating ? <Spinner color="#a78bfa" /> : '✉️'} {generating ? 'Generating…' : lead.outreach ? 'Regenerate Outreach' : 'Generate Outreach'}
+                </button>
+              </Tooltip>
             </div>
           </div>
 
@@ -451,12 +475,14 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
 
           {/* Delete */}
           <div className="pt-2 border-t border-white/5">
-            <button
-              onClick={onDelete}
-              className="w-full py-2 rounded-xl text-red-600 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 text-sm transition-all"
-            >
-              🗑 Delete Lead
-            </button>
+            <Tooltip text="Permanently remove this lead from your list">
+              <button
+                onClick={onDelete}
+                className="w-full py-2 rounded-xl text-red-600 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 text-sm transition-all"
+              >
+                🗑 Delete Lead
+              </button>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -779,30 +805,38 @@ export default function DashboardPage() {
             )}
             {leads.length > 0 && (
               <>
-                <button
-                  onClick={handleEnrichAll}
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-xs font-medium transition-all"
-                >
-                  🔍 Enrich All
-                </button>
-                <button
-                  onClick={handleScoreAll}
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-xs font-medium transition-all"
-                >
-                  📊 Score All
-                </button>
-                <button
-                  onClick={() => { window.open('/api/export', '_blank'); addLog('info', '📤 CSV export'); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-xs font-medium transition-all"
-                >
-                  ↓ Export CSV
-                </button>
-                <button
-                  onClick={handleDeleteAll}
-                  className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 text-xs font-medium transition-all ml-1"
-                >
-                  🗑 Clear All
-                </button>
+                <Tooltip text="Scan all lead websites and extract SEO, tech & contact signals">
+                  <button
+                    onClick={handleEnrichAll}
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-xs font-medium transition-all"
+                  >
+                    🔍 Enrich All
+                  </button>
+                </Tooltip>
+                <Tooltip text="Score all leads based on their digital presence and signals">
+                  <button
+                    onClick={handleScoreAll}
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-xs font-medium transition-all"
+                  >
+                    📊 Score All
+                  </button>
+                </Tooltip>
+                <Tooltip text="Download all your leads as a CSV file">
+                  <button
+                    onClick={() => { window.open('/api/export', '_blank'); addLog('info', '📤 CSV export'); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-xs font-medium transition-all"
+                  >
+                    ↓ Export CSV
+                  </button>
+                </Tooltip>
+                <Tooltip text="Delete all leads from your list — this cannot be undone">
+                  <button
+                    onClick={handleDeleteAll}
+                    className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 text-xs font-medium transition-all ml-1"
+                  >
+                    🗑 Clear All
+                  </button>
+                </Tooltip>
               </>
             )}
           </div>

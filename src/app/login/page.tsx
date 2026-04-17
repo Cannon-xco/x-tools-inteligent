@@ -24,7 +24,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (result?.error) {
-      setError('Email atau password salah');
+      setError('Invalid email or password. Please try again.');
     } else {
       window.location.href = '/dashboard';
     }
@@ -41,7 +41,7 @@ export default function LoginPage() {
             </svg>
           </div>
           <h1 className="text-white text-xl font-bold tracking-tight">XTools</h1>
-          <p className="text-gray-500 text-sm mt-1">Masuk ke akun kamu</p>
+          <p className="text-gray-500 text-sm mt-1">Sign in to your account</p>
         </div>
 
         {/* Card */}
@@ -55,7 +55,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="kamu@email.com"
+                placeholder="you@email.com"
                 required
                 autoComplete="email"
                 className="w-full bg-black/40 border border-white/10 focus:border-blue-500/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors"
@@ -92,18 +92,18 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Masuk...</span>
+                  <span>Signing in...</span>
                 </>
               ) : (
-                'Masuk'
+                'Sign In'
               )}
             </button>
           </form>
 
           <p className="text-center text-xs text-gray-600 mt-5">
-            Belum punya akun?{' '}
+            Don&apos;t have an account?{' '}
             <Link href="/register" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
-              Daftar di sini
+              Create one here
             </Link>
           </p>
         </div>

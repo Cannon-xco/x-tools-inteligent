@@ -18,11 +18,11 @@ export default function RegisterPage() {
     setError('');
 
     if (password.length < 8) {
-      setError('Password minimal 8 karakter');
+      setError('Password must be at least 8 characters.');
       return;
     }
     if (password !== confirm) {
-      setError('Password dan konfirmasi tidak cocok');
+      setError('Passwords do not match. Please try again.');
       return;
     }
 
@@ -35,7 +35,7 @@ export default function RegisterPage() {
       });
 
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error ?? 'Gagal mendaftar');
+      if (!res.ok || !data.success) throw new Error(data.error ?? 'Registration failed. Please try again.');
 
       router.push('/login?registered=1');
     } catch (err) {
@@ -56,7 +56,7 @@ export default function RegisterPage() {
             </svg>
           </div>
           <h1 className="text-white text-xl font-bold tracking-tight">XTools</h1>
-          <p className="text-gray-500 text-sm mt-1">Buat akun baru</p>
+          <p className="text-gray-500 text-sm mt-1">Create your free account</p>
         </div>
 
         {/* Card */}
@@ -64,13 +64,13 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">
-                Nama
+                Full Name
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Nama lengkap kamu"
+                placeholder="Your full name"
                 required
                 className="w-full bg-black/40 border border-white/10 focus:border-blue-500/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors"
               />
@@ -84,7 +84,7 @@ export default function RegisterPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="kamu@email.com"
+                placeholder="you@email.com"
                 required
                 autoComplete="email"
                 className="w-full bg-black/40 border border-white/10 focus:border-blue-500/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors"
@@ -99,7 +99,7 @@ export default function RegisterPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimal 8 karakter"
+                placeholder="Minimum 8 characters"
                 required
                 autoComplete="new-password"
                 className="w-full bg-black/40 border border-white/10 focus:border-blue-500/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors"
@@ -108,13 +108,13 @@ export default function RegisterPage() {
 
             <div className="space-y-1.5">
               <label className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">
-                Konfirmasi Password
+                Confirm Password
               </label>
               <input
                 type="password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                placeholder="Ulangi password"
+                placeholder="Repeat your password"
                 required
                 autoComplete="new-password"
                 className="w-full bg-black/40 border border-white/10 focus:border-blue-500/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors"
@@ -136,18 +136,18 @@ export default function RegisterPage() {
               {loading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Mendaftar...</span>
+                  <span>Creating account...</span>
                 </>
               ) : (
-                'Daftar'
+                'Create Account'
               )}
             </button>
           </form>
 
           <p className="text-center text-xs text-gray-600 mt-5">
-            Sudah punya akun?{' '}
+            Already have an account?{' '}
             <Link href="/login" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
-              Masuk di sini
+              Sign in here
             </Link>
           </p>
         </div>

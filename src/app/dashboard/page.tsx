@@ -235,10 +235,20 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
   const e = lead.enrichment;
 
   // Collect all detected emails (deduplicated)
-  const detectedEmails = Array.from(new Set([
+  const allEmails = Array.from(new Set([
     ...(lead.enrichment?.website?.emails?.value ?? []),
     ...(lead.deepEnrichment?.emails?.map((em: { value: string }) => em.value) ?? []),
   ])).filter(Boolean);
+
+  // Prefer emails that match the lead's own website domain
+  let detectedEmails = allEmails;
+  if (lead.website && allEmails.length > 0) {
+    try {
+      const domain = new URL(lead.website).hostname.replace(/^www\./, '');
+      const domainMatched = allEmails.filter((em) => em.split('@')[1] === domain);
+      if (domainMatched.length > 0) detectedEmails = domainMatched;
+    } catch { /* keep all on invalid URL */ }
+  }
   const step = leadPipelineStep(lead);
   const badge = scoreBadge(lead.score);
   const sc = scoreColor(lead.score);

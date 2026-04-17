@@ -225,13 +225,20 @@ function OutreachModal({ lead, outreach, onClose, onSent, onOpenDrawer }: {
 
 // ── Lead Detail Panel ─────────────────────────────────────────
 
-function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelete, onDeepEnrichComplete, enriching, scoring, generating, niche }: {
+function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelete, onDeepEnrichComplete, onOpenEmailDrawer, enriching, scoring, generating, niche }: {
   lead: BusinessListing; onClose: () => void;
   onEnrich: () => void; onScore: () => void; onOutreach: () => void; onDelete: () => void;
   onDeepEnrichComplete: (result: DeepEnrichResult) => void;
+  onOpenEmailDrawer: (email: string) => void;
   enriching: boolean; scoring: boolean; generating: boolean; niche: string;
 }) {
   const e = lead.enrichment;
+
+  // Collect all detected emails (deduplicated)
+  const detectedEmails = Array.from(new Set([
+    ...(lead.enrichment?.website?.emails?.value ?? []),
+    ...(lead.deepEnrichment?.emails?.map((em: { value: string }) => em.value) ?? []),
+  ])).filter(Boolean);
   const step = leadPipelineStep(lead);
   const badge = scoreBadge(lead.score);
   const sc = scoreColor(lead.score);
@@ -272,6 +279,31 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
               ))}
             </div>
           </div>
+
+          {/* Detected Emails */}
+          {detectedEmails.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">
+                📧 Detected Emails ({detectedEmails.length})
+              </p>
+              <div className="bg-black/20 rounded-xl border border-white/5 divide-y divide-white/5">
+                {detectedEmails.map((email) => (
+                  <div key={email} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                    <span className="text-xs text-gray-300 font-mono truncate">{email}</span>
+                    <button
+                      onClick={() => onOpenEmailDrawer(email)}
+                      className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-all"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                        <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Send
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="space-y-2">
@@ -1225,6 +1257,15 @@ export default function DashboardPage() {
           onDelete={() => handleDelete(selectedLead)}
           onDeepEnrichComplete={(result) => {
             setLeads((p) => p.map((l) => l.id === selectedLead.id ? { ...l, deepEnrichment: result } : l));
+          }}
+          onOpenEmailDrawer={(email) => {
+            setEmailDrawer({
+              open: true,
+              lead: selectedLead,
+              subject: selectedLead.outreach?.subject ?? '',
+              body: selectedLead.outreach?.body ?? '',
+              defaultTo: email,
+            });
           }}
           enriching={enrichingIds.has(selectedLead.id!)}
           scoring={scoringIds.has(selectedLead.id!)}

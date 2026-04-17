@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { getUserByEmail } from '@/lib/db/client';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  trustHost: true,
   providers: [
     Credentials({
       credentials: {

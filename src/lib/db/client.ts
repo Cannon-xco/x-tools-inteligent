@@ -53,6 +53,22 @@ async function initSchema(pool: Pool): Promise<void> {
   try {
     await client.query('BEGIN');
     await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id            SERIAL PRIMARY KEY,
+        email         TEXT UNIQUE NOT NULL,
+        name          TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS user_preferences (
+        user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        default_niche TEXT DEFAULT 'local',
+        from_name     TEXT DEFAULT 'XTools Outreach',
+        from_email    TEXT DEFAULT 'onboarding@resend.dev',
+        updated_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS leads (
         id                   SERIAL PRIMARY KEY,
         hash                 TEXT UNIQUE NOT NULL,
@@ -87,13 +103,6 @@ async function initSchema(pool: Pool): Promise<void> {
       ALTER TABLE leads ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;
       ALTER TABLE leads ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
 
-      CREATE INDEX IF NOT EXISTS idx_leads_user_id ON leads(user_id);
-      CREATE INDEX IF NOT EXISTS idx_leads_hash          ON leads(hash);
-      CREATE INDEX IF NOT EXISTS idx_leads_score         ON leads(score DESC);
-      CREATE INDEX IF NOT EXISTS idx_leads_created       ON leads(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_leads_name          ON leads(name);
-      CREATE INDEX IF NOT EXISTS idx_leads_deep_enriched ON leads(deep_enriched_at DESC);
-
       CREATE TABLE IF NOT EXISTS logs (
         id         SERIAL PRIMARY KEY,
         level      TEXT NOT NULL,
@@ -102,23 +111,13 @@ async function initSchema(pool: Pool): Promise<void> {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at DESC);
-
-      CREATE TABLE IF NOT EXISTS users (
-        id            SERIAL PRIMARY KEY,
-        email         TEXT UNIQUE NOT NULL,
-        name          TEXT NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at    TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS user_preferences (
-        user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-        default_niche TEXT DEFAULT 'local',
-        from_name     TEXT DEFAULT 'XTools Outreach',
-        from_email    TEXT DEFAULT 'onboarding@resend.dev',
-        updated_at    TIMESTAMPTZ DEFAULT NOW()
-      );
+      CREATE INDEX IF NOT EXISTS idx_leads_user_id      ON leads(user_id);
+      CREATE INDEX IF NOT EXISTS idx_leads_hash         ON leads(hash);
+      CREATE INDEX IF NOT EXISTS idx_leads_score        ON leads(score DESC);
+      CREATE INDEX IF NOT EXISTS idx_leads_created      ON leads(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_leads_name         ON leads(name);
+      CREATE INDEX IF NOT EXISTS idx_leads_deep_enriched ON leads(deep_enriched_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_logs_created       ON logs(created_at DESC);
     `);
     await client.query('COMMIT');
   } catch (err) {

@@ -3,9 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useLanguage } from '@/lib/i18n/context';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [name, setName]         = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
@@ -18,11 +21,11 @@ export default function RegisterPage() {
     setError('');
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+      setError(t('reg.errShort'));
       return;
     }
     if (password !== confirm) {
-      setError('Passwords do not match. Please try again.');
+      setError(t('reg.errMismatch'));
       return;
     }
 
@@ -35,7 +38,7 @@ export default function RegisterPage() {
       });
 
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error ?? 'Registration failed. Please try again.');
+      if (!res.ok || !data.success) throw new Error(data.error ?? t('reg.errFailed'));
 
       router.push('/login?registered=1');
     } catch (err) {
@@ -47,6 +50,9 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-[#0d0f1a] flex items-center justify-center p-4">
+      <div className="absolute top-4 right-4">
+        <LanguageSwitcher />
+      </div>
       <div className="w-full max-w-sm">
         {/* Logo / Title */}
         <div className="text-center mb-8">
@@ -56,7 +62,7 @@ export default function RegisterPage() {
             </svg>
           </div>
           <h1 className="text-white text-xl font-bold tracking-tight">XTools</h1>
-          <p className="text-gray-500 text-sm mt-1">Create your free account</p>
+          <p className="text-gray-500 text-sm mt-1">{t('reg.subtitle')}</p>
         </div>
 
         {/* Card */}
@@ -64,13 +70,13 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">
-                Full Name
+                {t('reg.fullName')}
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Your full name"
+                placeholder={t('reg.namePlaceholder')}
                 required
                 className="w-full bg-black/40 border border-white/10 focus:border-blue-500/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors"
               />
@@ -99,7 +105,7 @@ export default function RegisterPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 8 characters"
+                placeholder={t('reg.passPlaceholder')}
                 required
                 autoComplete="new-password"
                 className="w-full bg-black/40 border border-white/10 focus:border-blue-500/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors"
@@ -108,13 +114,13 @@ export default function RegisterPage() {
 
             <div className="space-y-1.5">
               <label className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">
-                Confirm Password
+                {t('reg.confirmPass')}
               </label>
               <input
                 type="password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                placeholder="Repeat your password"
+                placeholder={t('reg.confirmPlaceholder')}
                 required
                 autoComplete="new-password"
                 className="w-full bg-black/40 border border-white/10 focus:border-blue-500/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors"
@@ -136,18 +142,18 @@ export default function RegisterPage() {
               {loading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Creating account...</span>
+                  <span>{t('reg.loading')}</span>
                 </>
               ) : (
-                'Create Account'
+                t('reg.btn')
               )}
             </button>
           </form>
 
           <p className="text-center text-xs text-gray-600 mt-5">
-            Already have an account?{' '}
+            {t('reg.hasAccount')}{' '}
             <Link href="/login" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
-              Sign in here
+              {t('reg.signInLink')}
             </Link>
           </p>
         </div>

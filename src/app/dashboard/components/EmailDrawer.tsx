@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useLanguage } from '@/lib/i18n/context';
 
 export interface EmailDrawerProps {
   open: boolean;
@@ -25,6 +26,7 @@ export function EmailDrawer({
   defaultTo = '',
   onSent,
 }: EmailDrawerProps) {
+  const { t } = useLanguage();
   const [toEmail, setToEmail]     = useState(defaultTo);
   const [subject, setSubject]     = useState(initialSubject);
   const [body, setBody]           = useState(initialBody);
@@ -48,9 +50,9 @@ export function EmailDrawer({
   }, [open, onClose]);
 
   const handleSend = useCallback(async () => {
-    if (!toEmail.trim()) { setErrorMsg('Please enter a recipient email address'); return; }
-    if (!subject.trim()) { setErrorMsg('Subject cannot be empty'); return; }
-    if (!body.trim())    { setErrorMsg('Email body cannot be empty'); return; }
+    if (!toEmail.trim()) { setErrorMsg(t('email.errEmpty')); return; }
+    if (!subject.trim()) { setErrorMsg(t('email.errSubject')); return; }
+    if (!body.trim())    { setErrorMsg(t('email.errBody')); return; }
 
     setSendState('sending');
     setErrorMsg('');
@@ -63,7 +65,7 @@ export function EmailDrawer({
       });
 
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error ?? 'Failed to send email');
+      if (!res.ok || !data.success) throw new Error(data.error ?? t('email.errFailed'));
 
       setSendState('sent');
       onSent?.(data.data?.sent_at ?? new Date().toISOString());
@@ -72,7 +74,7 @@ export function EmailDrawer({
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setSendState('error');
     }
-  }, [leadId, toEmail, subject, body, onSent, onClose]);
+  }, [leadId, toEmail, subject, body, onSent, onClose, t]);
 
   return (
     <>
@@ -90,14 +92,14 @@ export function EmailDrawer({
         <div className="flex items-center justify-between px-6 py-5 border-b border-white/5 shrink-0">
           <div>
             <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-0.5">
-              Send Outreach Email
+              {t('email.header')}
             </p>
             <h2 className="text-white font-semibold text-sm truncate max-w-[300px]">{leadName}</h2>
           </div>
           <button
             onClick={onClose}
             className="text-gray-600 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/5"
-            aria-label="Close"
+            aria-label={t('email.header')}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -112,13 +114,13 @@ export function EmailDrawer({
               ✅
             </div>
             <div className="text-center">
-              <p className="text-white font-semibold mb-1">Email Sent!</p>
+              <p className="text-white font-semibold mb-1">{t('email.sent')}</p>
               <p className="text-gray-500 text-sm">
-                Delivered to{' '}
+                {t('email.deliveredTo')}{' '}
                 <span className="text-gray-300 font-mono">{toEmail}</span>
               </p>
             </div>
-            <p className="text-xs text-gray-600">Closing automatically...</p>
+            <p className="text-xs text-gray-600">{t('email.closing')}</p>
           </div>
         ) : (
           /* Form */
@@ -126,7 +128,7 @@ export function EmailDrawer({
             {/* To */}
             <div className="space-y-1.5">
               <label className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">
-                To
+                {t('email.to')}
               </label>
               <input
                 type="email"
@@ -141,7 +143,7 @@ export function EmailDrawer({
             {/* Subject */}
             <div className="space-y-1.5">
               <label className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">
-                Subject
+                {t('email.subject')}
               </label>
               <input
                 type="text"
@@ -156,7 +158,7 @@ export function EmailDrawer({
             {/* Body */}
             <div className="space-y-1.5">
               <label className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">
-                Email Body
+                {t('email.body')}
               </label>
               <textarea
                 value={body}
@@ -166,7 +168,7 @@ export function EmailDrawer({
                 disabled={sendState === 'sending'}
                 className="w-full bg-black/40 border border-white/10 focus:border-blue-500/60 rounded-xl px-4 py-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none transition-colors resize-none leading-relaxed"
               />
-              <p className="text-[10px] text-gray-700 text-right">{body.length} characters</p>
+              <p className="text-[10px] text-gray-700 text-right">{body.length} {t('email.chars')}</p>
             </div>
 
             {/* Error */}
@@ -190,14 +192,14 @@ export function EmailDrawer({
               {sendState === 'sending' ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Sending...</span>
+                  <span>{t('email.sending')}</span>
                 </>
               ) : (
                 <>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
                     <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  <span>Send Email</span>
+                  <span>{t('email.send')}</span>
                 </>
               )}
             </button>
@@ -206,7 +208,7 @@ export function EmailDrawer({
               disabled={sendState === 'sending'}
               className="w-full py-2.5 rounded-xl text-gray-500 hover:text-gray-300 hover:bg-white/5 text-sm transition-all"
             >
-              Cancel
+              {t('email.cancel')}
             </button>
           </div>
         )}

@@ -3,8 +3,11 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
+import { useLanguage } from '@/lib/i18n/context';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 export default function LoginPage() {
+  const { t } = useLanguage();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
@@ -24,7 +27,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (result?.error) {
-      setError('Invalid email or password. Please try again.');
+      setError(t('login.error'));
     } else {
       window.location.href = '/dashboard';
     }
@@ -32,6 +35,9 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-[#0d0f1a] flex items-center justify-center p-4">
+      <div className="absolute top-4 right-4">
+        <LanguageSwitcher />
+      </div>
       <div className="w-full max-w-sm">
         {/* Logo / Title */}
         <div className="text-center mb-8">
@@ -41,7 +47,7 @@ export default function LoginPage() {
             </svg>
           </div>
           <h1 className="text-white text-xl font-bold tracking-tight">XTools</h1>
-          <p className="text-gray-500 text-sm mt-1">Sign in to your account</p>
+          <p className="text-gray-500 text-sm mt-1">{t('login.subtitle')}</p>
         </div>
 
         {/* Card */}
@@ -92,18 +98,18 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Signing in...</span>
+                  <span>{t('login.loading')}</span>
                 </>
               ) : (
-                'Sign In'
+                t('login.btn')
               )}
             </button>
           </form>
 
           <p className="text-center text-xs text-gray-600 mt-5">
-            Don&apos;t have an account?{' '}
+            {t('login.noAccount')}{' '}
             <Link href="/register" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
-              Create one here
+              {t('login.createLink')}
             </Link>
           </p>
         </div>

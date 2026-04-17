@@ -8,6 +8,8 @@ import { DeepEnrichButton } from './components/DeepEnrichButton';
 import { DeepEnrichPanel } from './components/DeepEnrichPanel';
 import { SendEmailButton } from './components/SendEmailButton';
 import { EmailDrawer } from './components/EmailDrawer';
+import { useLanguage } from '@/lib/i18n/context';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 interface ScrapedLeadResponse {
   name: string;
@@ -232,6 +234,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
   onOpenEmailDrawer: (email: string) => void;
   enriching: boolean; scoring: boolean; generating: boolean; niche: string;
 }) {
+  const { t } = useLanguage();
   const e = lead.enrichment;
 
   // Collect all detected emails (deduplicated)
@@ -294,7 +297,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
           {detectedEmails.length > 0 && (
             <div className="space-y-2">
               <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">
-                📧 Detected Emails ({detectedEmails.length})
+                📧 {t('drawer.detectedEmails')} ({detectedEmails.length})
               </p>
               <div className="bg-black/20 rounded-xl border border-white/5 divide-y divide-white/5">
                 {detectedEmails.map((email) => (
@@ -307,7 +310,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
                         <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
-                      Send
+                      {t('drawer.sendEmail')}
                     </button>
                   </div>
                 ))}
@@ -317,7 +320,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
 
           {/* Actions */}
           <div className="space-y-2">
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">Actions</p>
+            <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">{t('drawer.actions')}</p>
             <div className="grid grid-cols-2 gap-2">
               <Tooltip text="Extract website data: SEO signals, tech stack, contact info">
                 <button
@@ -325,7 +328,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
                   disabled={enriching}
                   className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-sm font-medium transition-all disabled:opacity-50 w-full"
                 >
-                  {enriching ? <Spinner color="#22d3ee" /> : '🔍'} {enriching ? 'Scanning…' : lead.website ? 'Enrich Site' : 'Discover Site'}
+                  {enriching ? <Spinner color="#22d3ee" /> : '🔍'} {enriching ? t('action.scanning') : lead.website ? t('action.enrichSite') : t('action.discoverSite')}
                 </button>
               </Tooltip>
               <Tooltip text="Calculate lead quality score based on website & presence signals">
@@ -334,7 +337,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
                   disabled={scoring}
                   className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-sm font-medium transition-all disabled:opacity-50 w-full"
                 >
-                  {scoring ? <Spinner color="#fbbf24" /> : '📊'} {scoring ? 'Scoring…' : 'Score Lead'}
+                  {scoring ? <Spinner color="#fbbf24" /> : '📊'} {scoring ? t('action.scoring') : t('action.scoreLead')}
                 </button>
               </Tooltip>
               <Tooltip text="Run deep enrichment: find verified emails, phone numbers & social profiles">
@@ -351,7 +354,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
                   disabled={generating}
                   className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 text-violet-400 text-sm font-medium transition-all disabled:opacity-50 col-span-2 w-full"
                 >
-                  {generating ? <Spinner color="#a78bfa" /> : '✉️'} {generating ? 'Generating…' : lead.outreach ? 'Regenerate Outreach' : 'Generate Outreach'}
+                  {generating ? <Spinner color="#a78bfa" /> : '✉️'} {generating ? t('action.generating') : lead.outreach ? t('action.regenOutreach') : t('action.genOutreach')}
                 </button>
               </Tooltip>
             </div>
@@ -365,7 +368,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
 
           {/* Lead info */}
           <div className="space-y-3">
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">Business Info</p>
+            <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">{t('drawer.businessInfo')}</p>
             <div className="bg-black/20 rounded-xl border border-white/5 divide-y divide-white/5">
               {lead.phone && (
                 <div className="px-4 py-3 flex items-center justify-between">
@@ -412,7 +415,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
           {/* Score */}
           {lead.score !== undefined && (
             <div>
-              <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-3">Lead Score</p>
+              <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-3">{t('drawer.leadScore')}</p>
               <div className={`rounded-xl border p-4 ${sc.bg} ${sc.border}`}>
                 <div className="flex items-center justify-between mb-3">
                   <span className={`text-3xl font-bold ${sc.text}`}>{lead.score}</span>
@@ -535,6 +538,7 @@ function LeadDetailPanel({ lead, onClose, onEnrich, onScore, onOutreach, onDelet
 // ── Main Dashboard ────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { t } = useLanguage();
   const [keyword, setKeyword] = useState('');
   const [location, setLocation] = useState('');
   const [limit, setLimit] = useState(10);
@@ -823,7 +827,7 @@ export default function DashboardPage() {
           {/* Niche + location label */}
           {leads.length > 0 && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <span className="text-gray-600 text-xs shrink-0">Outreach niche:</span>
+              <span className="text-gray-600 text-xs shrink-0">{t('nav.niche')}</span>
               <input
                 value={niche}
                 onChange={(e) => setNiche(e.target.value)}
@@ -834,6 +838,7 @@ export default function DashboardPage() {
           )}
 
           <div className="ml-auto flex items-center gap-3">
+            <LanguageSwitcher />
             {session?.user && (
               <div className="hidden sm:flex items-center gap-2 border-r border-white/5 pr-3 mr-1">
                 <span className="text-xs text-gray-600 truncate max-w-[160px]">{session.user.email}</span>
@@ -841,7 +846,7 @@ export default function DashboardPage() {
                   onClick={() => signOut({ callbackUrl: '/login' })}
                   className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded-lg border border-white/5 hover:border-red-500/20"
                 >
-                  Logout
+                  {t('nav.logout')}
                 </button>
               </div>
             )}
@@ -852,7 +857,7 @@ export default function DashboardPage() {
                     onClick={handleEnrichAll}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-xs font-medium transition-all"
                   >
-                    🔍 Enrich All
+                    {t('nav.enrichAll')}
                   </button>
                 </Tooltip>
                 <Tooltip text="Score all leads based on their digital presence and signals">
@@ -860,7 +865,7 @@ export default function DashboardPage() {
                     onClick={handleScoreAll}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-xs font-medium transition-all"
                   >
-                    📊 Score All
+                    {t('nav.scoreAll')}
                   </button>
                 </Tooltip>
                 <Tooltip text="Download all your leads as a CSV file">
@@ -868,7 +873,7 @@ export default function DashboardPage() {
                     onClick={() => { window.open('/api/export', '_blank'); addLog('info', '📤 CSV export'); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-xs font-medium transition-all"
                   >
-                    ↓ Export CSV
+                    {t('nav.exportCsv')}
                   </button>
                 </Tooltip>
                 <Tooltip text="Delete all leads from your list — this cannot be undone">
@@ -876,7 +881,7 @@ export default function DashboardPage() {
                     onClick={handleDeleteAll}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 text-xs font-medium transition-all ml-1"
                   >
-                    🗑 Clear All
+                    {t('nav.clearAll')}
                   </button>
                 </Tooltip>
               </>
@@ -891,8 +896,8 @@ export default function DashboardPage() {
         <section className="bg-gradient-to-br from-[#131827] to-[#0f1320] border border-white/[0.07] rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-lg">🗺</span>
-            <h1 className="font-semibold text-white">Source Local Businesses</h1>
-            <span className="text-gray-600 text-sm">from Google Maps</span>
+            <h1 className="font-semibold text-white">{t('search.title')}</h1>
+            <span className="text-gray-600 text-sm">{t('search.fromGmaps')}</span>
           </div>
 
           <form onSubmit={handleSearch} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-3">
@@ -901,7 +906,7 @@ export default function DashboardPage() {
               <input
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="Keyword  (e.g. dentist, spa, lawyer)"
+                placeholder={t('search.keyword')}
                 className="w-full bg-black/30 border border-white/10 focus:border-violet-500 rounded-xl pl-9 pr-4 py-3 text-white placeholder-gray-700 text-sm focus:outline-none transition-colors"
                 required
               />
@@ -911,7 +916,7 @@ export default function DashboardPage() {
               <input
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="Location  (e.g. Bali, Jakarta)"
+                placeholder={t('search.location')}
                 className="w-full bg-black/30 border border-white/10 focus:border-violet-500 rounded-xl pl-9 pr-4 py-3 text-white placeholder-gray-700 text-sm focus:outline-none transition-colors"
                 required
               />
@@ -921,14 +926,14 @@ export default function DashboardPage() {
               onChange={(e) => setLimit(parseInt(e.target.value))}
               className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500 cursor-pointer"
             >
-              {[5, 10, 20, 30, 50].map((n) => <option key={n} value={n}>{n} results</option>)}
+              {[5, 10, 20, 30, 50].map((n) => <option key={n} value={n}>{n} {t('search.results')}</option>)}
             </select>
             <button
               type="submit"
               disabled={isSearching}
               className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed rounded-xl px-6 py-3 font-semibold text-sm transition-all flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-violet-500/20"
             >
-              {isSearching ? <><Spinner size="sm" /> Searching…</> : '▶  Run Search'}
+              {isSearching ? <><Spinner size="sm" /> {t('search.running')}</> : t('search.run')}
             </button>
           </form>
 

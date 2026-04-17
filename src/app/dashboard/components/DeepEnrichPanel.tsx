@@ -45,8 +45,10 @@ function formatSource(source: string): string {
  * Format date string ke readable format
  */
 function formatDate(dateString: string): string {
+  if (!dateString) return '—';
   const date = new Date(dateString);
-  return date.toLocaleString('id-ID', {
+  if (isNaN(date.getTime())) return '—';
+  return date.toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -133,10 +135,10 @@ export function DeepEnrichPanel({ leadId, data }: DeepEnrichPanelProps): React.R
 
   const hasData = data !== null && data !== undefined;
   const hasAnyContent = hasData && (
-    data.emails.length > 0 ||
-    data.phones.length > 0 ||
-    Object.keys(data.socials).length > 0 ||
-    data.people.length > 0
+    (data.emails?.length ?? 0) > 0 ||
+    (data.phones?.length ?? 0) > 0 ||
+    Object.keys(data.socials ?? {}).length > 0 ||
+    (data.people?.length ?? 0) > 0
   );
 
   const toggleOpen = (): void => {
@@ -158,15 +160,15 @@ export function DeepEnrichPanel({ leadId, data }: DeepEnrichPanelProps): React.R
       >
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-white">🔍 Deep Enrichment</span>
-          {hasData && (
+          {hasData && data.enriched_at && (
             <span className="text-xs text-gray-500">
               {formatDate(data.enriched_at)}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {hasData && (
-            <ConfidenceBadge value={data.overallConfidence} size="sm" />
+          {hasData && data.overallConfidence != null && (
+            <ConfidenceBadge value={data.overallConfidence ?? 0} size="sm" />
           )}
           <span className="text-gray-400 text-xs">
             {isOpen ? '▾' : '▸'}
@@ -197,22 +199,22 @@ export function DeepEnrichPanel({ leadId, data }: DeepEnrichPanelProps): React.R
                 No contacts found during enrichment.
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Sources checked: {data.sources_used.join(', ')}
+                Sources checked: {(data.sources_used ?? []).join(', ')}
               </p>
             </div>
           ) : (
             /* Content Sections */
             <>
               {/* Emails Section */}
-              {data.emails.length > 0 && (
+              {(data.emails?.length ?? 0) > 0 && (
                 <div className="space-y-2">
                   <SectionHeader
                     icon="📧"
                     title="Emails"
-                    count={data.emails.length}
+                    count={data.emails?.length ?? 0}
                   />
                   <div className="space-y-1.5">
-                    {data.emails.map((email, idx) => (
+                    {(data.emails ?? []).map((email, idx) => (
                       <div
                         key={idx}
                         className="flex items-center justify-between py-1.5 px-2 rounded bg-white/5"
@@ -235,15 +237,15 @@ export function DeepEnrichPanel({ leadId, data }: DeepEnrichPanelProps): React.R
               )}
 
               {/* Phones Section */}
-              {data.phones.length > 0 && (
+              {(data.phones?.length ?? 0) > 0 && (
                 <div className="space-y-2">
                   <SectionHeader
                     icon="📞"
                     title="Phones"
-                    count={data.phones.length}
+                    count={data.phones?.length ?? 0}
                   />
                   <div className="space-y-1.5">
-                    {data.phones.map((phone, idx) => (
+                    {(data.phones ?? []).map((phone, idx) => (
                       <div
                         key={idx}
                         className="flex items-center justify-between py-1.5 px-2 rounded bg-white/5"
@@ -266,15 +268,15 @@ export function DeepEnrichPanel({ leadId, data }: DeepEnrichPanelProps): React.R
               )}
 
               {/* Social Profiles Section */}
-              {Object.keys(data.socials).length > 0 && (
+              {Object.keys(data.socials ?? {}).length > 0 && (
                 <div className="space-y-2">
                   <SectionHeader
                     icon="🌐"
                     title="Social Profiles"
-                    count={Object.keys(data.socials).length}
+                    count={Object.keys(data.socials ?? {}).length}
                   />
                   <div className="space-y-1.5">
-                    {Object.entries(data.socials).map(([platform, url], idx) => (
+                    {Object.entries(data.socials ?? {}).map(([platform, url], idx) => (
                       <div
                         key={idx}
                         className="flex items-center justify-between py-1.5 px-2 rounded bg-white/5"
@@ -300,15 +302,15 @@ export function DeepEnrichPanel({ leadId, data }: DeepEnrichPanelProps): React.R
               )}
 
               {/* People Section */}
-              {data.people.length > 0 && (
+              {(data.people?.length ?? 0) > 0 && (
                 <div className="space-y-2">
                   <SectionHeader
                     icon="👤"
                     title="People"
-                    count={data.people.length}
+                    count={data.people?.length ?? 0}
                   />
                   <div className="space-y-1.5">
-                    {data.people.map((person, idx) => (
+                    {(data.people ?? []).map((person, idx) => (
                       <div
                         key={idx}
                         className="flex items-center justify-between py-1.5 px-2 rounded bg-white/5"
@@ -334,11 +336,11 @@ export function DeepEnrichPanel({ leadId, data }: DeepEnrichPanelProps): React.R
               <div className="pt-3 border-t border-white/10 space-y-1.5">
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <span className="font-medium">Sources:</span>
-                  <span>{data.sources_used.join(', ')}</span>
+                  <span>{(data.sources_used ?? []).join(', ')}</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <span className="font-medium">Enriched:</span>
-                  <span>{formatDate(data.enriched_at)}</span>
+                  <span>{formatDate(data.enriched_at ?? '')}</span>
                 </div>
               </div>
             </>

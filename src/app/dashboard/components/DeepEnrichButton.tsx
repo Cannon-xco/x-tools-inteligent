@@ -163,7 +163,7 @@ export function DeepEnrichButton({
    */
   const getButtonStyles = (): string => {
     const baseStyles =
-      'px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1.5';
+      'w-full px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1.5';
 
     switch (buttonState) {
       case 'polling':

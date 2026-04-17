@@ -808,7 +808,7 @@ export default function DashboardPage() {
                 <Tooltip text="Scan all lead websites and extract SEO, tech & contact signals">
                   <button
                     onClick={handleEnrichAll}
-                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-xs font-medium transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-xs font-medium transition-all"
                   >
                     🔍 Enrich All
                   </button>
@@ -816,7 +816,7 @@ export default function DashboardPage() {
                 <Tooltip text="Score all leads based on their digital presence and signals">
                   <button
                     onClick={handleScoreAll}
-                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-xs font-medium transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-xs font-medium transition-all"
                   >
                     📊 Score All
                   </button>
@@ -832,7 +832,7 @@ export default function DashboardPage() {
                 <Tooltip text="Delete all leads from your list — this cannot be undone">
                   <button
                     onClick={handleDeleteAll}
-                    className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 text-xs font-medium transition-all ml-1"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 text-xs font-medium transition-all ml-1"
                   >
                     🗑 Clear All
                   </button>
